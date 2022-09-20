@@ -140,6 +140,28 @@ static void start_process(void* file_name_) {
    does nothing. */
 int process_wait(pid_t child_pid UNUSED) {
   sema_down(&temporary);
+
+  
+
+  // block parent process
+
+  // get thread with PID child_pid
+  // return -1 if thread DNE or not a child of the calling process??????
+  // if thread = blocked or dying status; return -1
+
+  
+  // run cpid process
+  int exit_status = process_exec(child_pid);
+  thread_block() // blocks parent process until cpid exit
+  if (exit_status == -1) { // error check
+    thread_unblock()
+    return -1;
+  }
+  thread_unblock()
+
+
+  // if fails?
+  sema_up(&temporary); // analagous to releasing the lock?
   return 0;
 }
 
