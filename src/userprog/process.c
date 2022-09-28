@@ -73,6 +73,11 @@ pid_t process_execute(const char* file_name) {
    running. */
 static void start_process(void* file_name_) {
   char* file_name = (char*)file_name_;
+  if (file_name == "" || file_name == NULL) {
+    thread_exit();
+    // q: do we need to return eax=-1 or some sort of error code here?
+  }
+
   struct thread* t = thread_current();
   struct intr_frame if_;
   bool success, pcb_success;
@@ -99,7 +104,37 @@ static void start_process(void* file_name_) {
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-    success = load(file_name, &if_.eip, &if_.esp);
+
+    // Parse thru file_name
+    char* token;
+    int argc = 0;
+    size_t argv_size = 2; // Init to default size of 2
+    char* argv[argv_size] = (char*)malloc(
+        argv_size * sizeof(char)); //FIXME: THIS SHOULD NOT BE ALLOCATED TO THE HEAP RIGHT
+    if (argv == NULL) {
+      thread_exit();
+      // todo: how to exit? success = false?
+    }
+    char** saveptr;
+
+    for (token = strtok_r(file_name, " ", saveptr); token != NULL;
+         token = strtok_r(NULL, " ", saveptr)) {
+      if (argc == argv_size) {
+        // Reallocate argv array size
+        argv_size *= 2;
+        argv = realloc(argv, argv_size * sizeof(char*));
+        if (argv == NULL) {
+          free(argv);
+          thread_exit();
+          // how to exit; success = false
+        }
+      }
+      strlcpy(argv[argc], token, sizeof token);
+      argc++;
+    }
+
+    // Load executable
+    success = load(file_name, &if_.eip, &if_.esp, argc, argv);
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
@@ -268,7 +303,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]) {
+bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char** argv) {
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
@@ -348,7 +383,8 @@ bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char*
   }
 
   /* Set up stack. */
-  if (!setup_stack(esp))
+  argv[0] = file_name;
+  if (!setup_stack(esp, argc, argv))
     goto done;
 
   /* Start address. */
@@ -472,10 +508,17 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
-    if (success)
-      *esp = PHYS_BASE - 20;
-    else
+    if (success) {
+      *esp = PHYS_BASE;
+      char addresses[argc + 1];
+      addresses[argc] = 0;                  // fixme: should this be null terminator? not 0?
+      for (int i = argc - 1; i >= 0; i--) { // start from last element in argv
+        *esp -= sizeof argv[i];
+        strlcpy(*esp, argv[i], sizeof argv[i]);
+      }
+    } else {
       palloc_free_page(kpage);
+    }
   }
   return success;
 }
