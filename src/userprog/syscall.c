@@ -37,8 +37,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     void* buf = args[2];
     size_t size = args[3];
 
-    if (fd == 1) { // STDOUT
-      putbuf(buf, size);
+    if (fd == 1) {       // STDOUT
+      putbuf(buf, size); // q: should we put anything into eax register here? or just null lol
     } else {
       file* file; // todo: get file from fdt
       off_t bytes_written = file_write(file, buf, size);
