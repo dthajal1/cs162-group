@@ -1,3 +1,4 @@
+#include "filesys/file.h"
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
@@ -21,9 +22,31 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
   /* printf("System call number: %d\n", args[0]); */
 
-  if (args[0] == SYS_EXIT) {
+  int syscall_num = args[0];
+  if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
     f->eax = args[1];
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit();
+  } else if (syscall_num == SYS_PRACTICE) {
+    // todo: error check
+    f->eax = args[1] + 1;
+    return;
+  } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
+    // todo: error check
+    int fd = args[1];
+    void* buf = args[2];
+    size_t size = args[3];
+
+    if (fd == 1) { // STDOUT
+      putbuf(buf, size);
+    } else {
+      file* file; // todo: get file from fdt
+      off_t bytes_written = file_write(file, buf, size);
+      f->eax = bytes_written;
+    }
+    return;
+  } else { // syscall DNE
+    f->eax = -1;
+    return;
   }
 }
