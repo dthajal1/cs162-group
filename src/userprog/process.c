@@ -42,6 +42,9 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
 
+  // initialize fd_table here?
+  
+
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }
@@ -156,6 +159,9 @@ void process_exit(void) {
     thread_exit();
     NOT_REACHED();
   }
+
+  // close all the open file descriptors here
+  
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -291,6 +297,9 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
+
+  // call file_deny_write here?
+    // why?
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||

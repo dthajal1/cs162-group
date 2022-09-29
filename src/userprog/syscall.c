@@ -36,6 +36,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
   // lock_release(&lock);
 
+
+  // use hashmap + a counter to keep track of pointer to files?
+
   int syscall_num = args[0];
   switch (syscall_num) {
     case SYS_EXIT:
@@ -66,6 +69,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       // before returning verify file descriptors are not 0 or 1
       char *file_name = args[1];
       struct file *file_ptr = filesys_open(file_name);
+      // save file pointer to the file descriptor table and return the fd
+      save_file_ptr(file_ptr);
       if (file_ptr == NULL) {
         f->eax = -1;
       } else {
@@ -145,6 +150,24 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     default:
       break;
   }
+}
+
+
+struct fd_entry {
+  // struct list_elem elem;
+  int fd;
+  struct file *file_ptr;
+}
+
+int save_file_ptr(struct file* file_ptr) {
+  // get the last element from fd_table
+  
+  struct fd_entry *entry = malloc(sizeof(struct fd_entry));
+  if (entry != NULL) {
+    entry->file_ptr = file_ptr;
+    // entry->fd = last_elem->fd + 1
+  }
+  return -1;
 }
 
 struct file *get_file(int fd) {
