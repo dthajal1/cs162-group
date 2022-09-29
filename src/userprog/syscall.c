@@ -6,6 +6,8 @@
 #include "threads/thread.h"
 #include "userprog/process.h"
 
+#include "lib/kernel/stdio.h"
+
 static void syscall_handler(struct intr_frame*);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
@@ -34,15 +36,16 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
     // todo: error check
     int fd = args[1];
-    void* buf = args[2];
+    void* buf = (void*)args[2];
     size_t size = args[3];
 
     if (fd == 1) {       // STDOUT
       putbuf(buf, size); // q: should we put anything into eax register here? or just null lol
+      f->eax = size;
     } else {
-      file* file; // todo: get file from fdt
-      off_t bytes_written = file_write(file, buf, size);
-      f->eax = bytes_written;
+      // file* file; // todo: get file from fdt
+      // off_t bytes_written = file_write(file, buf, size);
+      // f->eax = bytes_written;
     }
     return;
   } else { // syscall DNE
