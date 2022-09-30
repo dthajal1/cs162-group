@@ -17,6 +17,12 @@ typedef tid_t pid_t;
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
 
+/* File Descriptor Table. */
+struct fd_table {
+  struct list fd_entries;
+  int next_fd; // next available fd in fd_table
+};
+
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
    PCB from the TCB. All TCBs in a process will have a pointer

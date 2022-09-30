@@ -42,6 +42,19 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
 
+  // t->fd_table = malloc(sizeof(struct fd_table));
+  // list_init(&(t->fd_table->fd_entries));
+  // t->fd_table->next_fd = 3; // 0, 1, 2 reserved
+
+  /* Initialize file descriptor table, its entries and next_fd. */
+  t->fd_table = malloc(sizeof(struct fd_table));
+  if (t->fd_table == NULL) {
+    // err handling
+  } else {
+    list_init(&(t->fd_table->fd_entries));
+    t > fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
+  }
+
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }
