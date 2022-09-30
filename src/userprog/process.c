@@ -42,17 +42,13 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
 
-  // t->fd_table = malloc(sizeof(struct fd_table));
-  // list_init(&(t->fd_table->fd_entries));
-  // t->fd_table->next_fd = 3; // 0, 1, 2 reserved
-
   /* Initialize file descriptor table, its entries and next_fd. */
   t->fd_table = malloc(sizeof(struct fd_table));
   if (t->fd_table == NULL) {
     // err handling
   } else {
     list_init(&(t->fd_table->fd_entries));
-    t > fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
+    t->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
   }
 
   /* Kill the kernel if we did not succeed */
@@ -160,6 +156,26 @@ int process_wait(pid_t child_pid UNUSED) {
 void process_exit(void) {
   struct thread* cur = thread_current();
   uint32_t* pd;
+
+  /* If this thread does not have a FD_TABLE, don't worry. */
+  // TODO: do we need this?
+  if (cur->fd_table == NULL) {
+    thread_exit();
+    NOT_REACHED();
+  }
+
+  /* Close all open files and free the FD_TABLE of this process. */
+  struct list_elem* e;
+  for (e = list_begin(&(cur->fd_table->fd_entries)); e != list_end(&(cur->fd_table->fd_entries));
+       e = list_next(e)) {
+    struct fd_entry* entry = list_entry(e, struct fd_entry, list_elem);
+    file_close(entry->file);
+    // TODO: free entry since we malloced it
+  }
+
+  struct fd_table* fd_table_to_free = cur->fd_table;
+  cur->fd_table = NULL;
+  free(fd_table_to_free);
 
   /* If this thread does not have a PCB, don't worry */
   if (cur->pcb == NULL) {

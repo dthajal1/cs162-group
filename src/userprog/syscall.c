@@ -9,16 +9,7 @@
 #include "devices/input.h"
 #include "filesys/file.h"
 
-/* File Descriptor Entry. It should be allocated on the heap and 
-  added to fd_table on every call to open(). */
-struct fd_entry {
-  struct list_elem elem; // doubly linked list functionality
-  int fd;
-  struct file* file;
-}
-
-static void
-syscall_handler(struct intr_frame*);
+static void syscall_handler(struct intr_frame*);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
