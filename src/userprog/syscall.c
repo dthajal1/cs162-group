@@ -26,7 +26,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
   int syscall_num = args[0];
   if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
-    if ((sizeof args != 2) || (args[1] == NULL))
+    if (args[1] == NULL)
       process_exit();
     f->eax = args[1];
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
@@ -51,6 +51,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     return;
   } else { // syscall DNE
-    return;
+    process_exit();
   }
 }
