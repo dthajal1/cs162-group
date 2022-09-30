@@ -29,6 +29,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     if ((sizeof args != 2) || (args[1] == NULL))
       process_exit();
     f->eax = args[1];
+    printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit();
   } else if (syscall_num == SYS_PRACTICE) {
     // todo: error check
