@@ -39,6 +39,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     int fd = args[1];
     if (!is_pointer_valid(args[2])) {
       f->eax = -1;
+      return;
     }
     void* buf = (void*)args[2];
     size_t size = args[3];
