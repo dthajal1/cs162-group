@@ -7,6 +7,8 @@
 #include "userprog/process.h"
 
 #include "lib/kernel/stdio.h"
+#include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -34,8 +36,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = args[1] + 1;
     return;
   } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
-    // todo: error check
     int fd = args[1];
+    if (!is_pointer_valid(args[2])) {
+      f->eax = -1;
+    }
     void* buf = (void*)args[2];
     size_t size = args[3];
 
@@ -52,4 +56,12 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = -1;
     return;
   }
+}
+
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+    virtual memory, or a pointer to kernel virtual address space 
+    (above PHYS_BASE). False otherwise. */
+bool is_pointer_valid(void* ptr) {
+  struct thread* t = thread_current();
+  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
 }
