@@ -106,30 +106,31 @@ static void start_process(void* file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
 
     // Parse thru file_name
-    char* token;
     int argc = 0;
     size_t argv_size = 2; // Init to default size of 2
-    char* argv[argv_size] = (char*)malloc(
-        argv_size * sizeof(char)); //FIXME: THIS SHOULD NOT BE ALLOCATED TO THE HEAP RIGHT
+    char** argv = (char**)malloc(argv_size * sizeof(char*));
     if (argv == NULL) {
       thread_exit();
-      // todo: how to exit? success = false?
     }
-    char** saveptr;
 
-    for (token = strtok_r(file_name, " ", saveptr); token != NULL;
-         token = strtok_r(NULL, " ", saveptr)) {
+    char* saveptr;
+
+    for (char* token = strtok_r(file_name, " ", &saveptr); token != NULL;
+         token = strtok_r(NULL, " ", &saveptr)) {
       if (argc == argv_size) {
         // Reallocate argv array size
         argv_size *= 2;
-        argv = realloc(argv, argv_size * sizeof(char));
+        argv = realloc(argv, argv_size * sizeof(char*));
         if (argv == NULL) {
-          free(argv);
           thread_exit();
           // how to exit; success = false
         }
       }
-      strlcpy(argv[argc], token, sizeof token);
+      argv[argc] = (char*)malloc(strlen(token) + 1);
+      if (argv[argc] == NULL) {
+        thread_exit();
+      }
+      strlcpy(argv[argc], token, strlen(token) + 1);
       argc++;
     }
 
@@ -303,7 +304,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char** argv) {
+bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]) {
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
@@ -510,13 +511,13 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
     if (success) {
       *esp = PHYS_BASE;
-      char addresses[argc + 1];
-      addresses[argc] = 0;                  // fixme: should this be null terminator? not 0?
-      for (int i = argc - 1; i >= 0; i--) { // start from last element in argv
-        *esp -= sizeof argv[i];             // q: we should decrement esp BEFORE copying right?
-        strlcpy(**esp, argv[i], sizeof argv[i]);
-        strlcpy(addresses[i], *esp, sizeof *esp);
+      void** addresses = (void**)malloc(argc * sizeof(void*));
+      for (int i = argc - 1; i >= 0; i--) {
+        *esp -= strlen(argv[i]); // q: we should decrement esp BEFORE copying right?
+        memcpy(*esp, &argv[i], strlen(argv[i]));
+        memcpy(&addresses[i], esp, sizeof *esp);
       }
+
       // todo: stack align!
       // Stack align the stack pointer by decrementing esp such that the pointer will be at 16 -
       // byte boundary by the time it pushes on argv and argc.
