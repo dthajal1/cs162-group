@@ -31,6 +31,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = args[1];
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit();
+    return;
   } else if (syscall_num == SYS_PRACTICE) {
     // todo: error check
     f->eax = args[1] + 1;
@@ -54,7 +55,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     return;
   } else { // syscall DNE
-    f->eax = -1;
+    process_exit();
     return;
   }
 }
