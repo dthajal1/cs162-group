@@ -33,7 +33,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     process_exit();
     return;
   } else if (syscall_num == SYS_PRACTICE) {
-    // todo: error check
     f->eax = args[1] + 1;
     return;
   } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
@@ -45,8 +44,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     void* buf = (void*)args[2];
     size_t size = args[3];
 
-    if (fd == 1) {       // STDOUT
-      putbuf(buf, size); // q: should we put anything into eax register here? or just null lol
+    if (fd == 1) { // STDOUT
+      putbuf(buf, size);
       f->eax = size;
     } else {
       // file* file; // todo: get file from fdt
