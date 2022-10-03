@@ -111,6 +111,7 @@ static void start_process(void* file_name_) {
     int argc = 0;
     size_t argv_size = 2; // Init to default size of 2
     char** argv = (char**)malloc(argv_size * sizeof(char*));
+    char** temp;
     if (argv == NULL) {
       palloc_free_page(file_name);
       sema_up(&temporary);
@@ -124,9 +125,12 @@ static void start_process(void* file_name_) {
       if (argc == argv_size) {
         // Reallocate argv array size
         argv_size *= 2;
-        argv = realloc(argv, argv_size * sizeof(char*));
-        if (argv == NULL) {
+        temp = realloc(argv, argv_size * sizeof(char*));
+        if (temp == NULL) {
+          free(argv);
           thread_exit();
+        } else {
+          argv = temp;
         }
       }
       argv[argc] = (char*)malloc(sizeof(char) * (strlen(token) + 1));
