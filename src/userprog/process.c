@@ -50,29 +50,31 @@ void userprog_init(void) {
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
-pid_t process_execute(const char* file_name) {
-  char* fn_copy;
+pid_t process_execute(const char* cmd) {
+  char* cmd_copy;
   tid_t tid;
 
   sema_init(&temporary, 0);
-  /* Make a copy of FILE_NAME.
+  /* Make a copy of CMD.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page(0);
-  if (fn_copy == NULL)
+  cmd_copy = palloc_get_page(0);
+  if (cmd_copy == NULL)
     return TID_ERROR;
-  strlcpy(fn_copy, file_name, PGSIZE);
+  strlcpy(cmd_copy, cmd, PGSIZE);
+  char* saveptr;
+  char* file_name = strtok_r(cmd, " ", &saveptr);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  /* Create a new thread to execute CMD. */
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, cmd_copy);
   if (tid == TID_ERROR)
-    palloc_free_page(fn_copy);
+    palloc_free_page(cmd_copy);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* file_name_) {
-  char* file_name = (char*)file_name_;
+static void start_process(void* cmd_) {
+  char* cmd = (char*)cmd_;
 
   struct thread* t = thread_current();
   struct intr_frame if_;
@@ -82,7 +84,7 @@ static void start_process(void* file_name_) {
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
 
-  if (strcmp(file_name, "") == 0 || file_name == NULL) {
+  if (strcmp(cmd, "") == 0 || cmd == NULL) {
     success = false;
   }
 
@@ -117,8 +119,9 @@ static void start_process(void* file_name_) {
     if (success) {
       char* saveptr;
 
-      for (char* token = strtok_r(file_name, " ", &saveptr); token != NULL;
+      for (char* token = strtok_r(cmd, " ", &saveptr); token != NULL;
            token = strtok_r(NULL, " ", &saveptr)) {
+        // printf("%s: should be my token\n", token);
 
         if (argc == argv_size) {
           // Reallocate argv array size
@@ -144,7 +147,7 @@ static void start_process(void* file_name_) {
 
       // Load executable
       if (success) {
-        success = load(file_name, &if_.eip, &if_.esp, argc, argv);
+        success = load(cmd, &if_.eip, &if_.esp, argc, argv);
       }
     }
   }
@@ -160,7 +163,7 @@ static void start_process(void* file_name_) {
   }
 
   /* Clean up. Exit on failure or jump to userspace */
-  palloc_free_page(file_name);
+  palloc_free_page(cmd);
   if (!success) {
     sema_up(&temporary);
     thread_exit();
@@ -516,40 +519,50 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
 static bool setup_stack(void** esp, int argc, char* argv[]) {
   uint8_t* kpage;
   bool success = false;
+  char** stack_ptr = (char**)esp;
 
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
     if (success) {
-      *esp = PHYS_BASE;
-      void** addresses = (void**)malloc(
+      *stack_ptr = PHYS_BASE;
+      char** addresses = (char**)malloc(
           (argc + 2) *
-          sizeof(void*)); // one extra space for null at the end, one extra for beginning of argv
+          sizeof(char*)); // one extra space for null at the end, one extra for beginning of argv
       addresses[argc] = NULL;
       for (int i = argc - 1; i >= 0; i--) {
-        *esp -= strlen(argv[i]) + 1;
-        memcpy(*esp, &argv[i], strlen(argv[i]));
-        memcpy(&addresses[i], esp, sizeof *esp);
+        *stack_ptr -= (strlen(argv[i]) + 1);
+        // printf("%s should be my token\n", argv[i]);
+        // printf("%d is the strlen of my token\n", strlen(argv[i]));
+
+        memset(*stack_ptr + strlen(argv[i]), 0, 1);
+        memcpy(*stack_ptr, argv[i], strlen(argv[i]));
+        memcpy(&addresses[i], stack_ptr, sizeof *stack_ptr);
       }
 
       // stack align (account for all args plus null pointer and argv/argc)
       // Stack align the stack pointer by decrementing esp such that the pointer will be at 16 -
       // byte boundary by the time it pushes on argv and argc.
-      while ((int)(*esp - (argc + 3) * 4) % 16 != 0) {
-        *esp -= 1;
+      while ((int)(*stack_ptr - (argc + 3) * 4) % 16 != 0) {
+        *stack_ptr -= 1;
       }
 
       // Iteratively push the values of `addresses` onto the stack from last to first, decrementing `esp` by 4 each time.
       for (int j = argc; j >= 0; j--) {
-        *esp -= 4;
-        memcpy(*esp, &addresses[j], 4);
-      }
-      addresses[argc + 1] = *esp;
+        *stack_ptr -= 4;
+        char* address = addresses[j];
+        // printf("at addresses[%d], %x should be my value\n", j, address);
+        // printf("%s is what it looks like printed to string\n", address);
 
-      *esp -= 12;
-      memmove(*esp + 8, &addresses[argc + 1], 4); // set argv (location of argv[0] on the stack)
-      memcpy(*esp + 4, &argc, 4);                 // set argc
-      memset(*esp, 0, 4);                         // set return
+        memcpy(*stack_ptr, &address, 4);
+      }
+      addresses[argc + 1] = *stack_ptr;
+
+      *stack_ptr -= 12;
+      memmove(*stack_ptr + 8, &addresses[argc + 1],
+              4);                       // set argv (location of argv[0] on the stack)
+      memcpy(*stack_ptr + 4, &argc, 4); // set argc
+      memset(*stack_ptr, 0, 4);         // set return
 
       free(addresses);
       free(argv);
