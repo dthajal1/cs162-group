@@ -77,7 +77,6 @@ static void start_process(void* file_name_) {
     palloc_free_page(file_name);
     sema_up(&temporary);
     thread_exit();
-    // q: do we need to return eax=-1 or some sort of error code here?
   }
 
   struct thread* t = thread_current();
@@ -544,7 +543,7 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
       addresses[argc + 1] = *esp;
 
       *esp -= 12;
-      memmove(*esp + 8, &addresses[argc + 1], 4); // set argv
+      memmove(*esp + 8, &addresses[argc + 1], 4); // set argv (location of argv[0] on the stack)
       memcpy(*esp + 4, &argc, 4);                 // set argc
       memset(*esp, 0, 4);                         // set return
 
