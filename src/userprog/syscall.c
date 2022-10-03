@@ -8,6 +8,8 @@
 #include "lib/kernel/stdio.h"
 #include "devices/input.h"
 #include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "userprog/pagedir.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -33,40 +35,60 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       process_exit();
       break;
     case SYS_CREATE:
-      // verify args: char *file, unsigned initial_size
+      // args: char *file, unsigned initial_size
+      if (!is_pointer_valid(args[1])) {
+        f->eax = -1;
+        return;
+      }
       char* file_name = args[1];
       off_t initial_size = args[2];
       bool is_success = filesys_create(file_name, initial_size);
       f->eax = is_success;
       break;
     case SYS_REMOVE:
-      // verify args: char *file
+      // args: char *file
+      if (!is_pointer_valid(args[1])) {
+        f->eax = -1;
+        return;
+      }
       char* file_name = args[1];
       bool is_success = filesys_remove(file_name);
       f->eax = is_success;
       break;
     case SYS_OPEN:
-      // verify args:  char *file
+      // args:  char *file
+      if (!is_pointer_valid(args[1])) {
+        f->eax = -1;
+        return;
+      }
       char* file_name = args[1];
       struct file* file = filesys_open(file_name);
+      if (file == NULL) {
+        f->eax = -1;
+        return;
+      }
 
       int new_fd = add_to_fd_table(file);
       f->eax = new_fd;
       break;
     case SYS_FILESIZE:
-      // verify args: int fd
+      // args: int fd
       int fd = args[1];
       struct file* file = get_from_fd_table(fd);
       if (file == NULL) {
         f->eax = -1;
-      } else {
-        off_t size = file_length(file);
-        f->eax = size;
+        return;
       }
+      off_t size = file_length(file);
+      f->eax = size;
       break;
     case SYS_READ:
-      // verify args: int fd, void *buffer, unsigned size
+      // args: int fd, void *buffer, unsigned size
       int fd = args[1];
+      if (!is_pointer_valid(args[2])) {
+        f->eax = -1;
+        return;
+      }
       char* buffer = args[2];
       unsigned size = args[3];
 
@@ -77,15 +99,19 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         struct file* file = get_from_fd_table(fd);
         if (file == NULL) {
           f->eax = -1;
-        } else {
-          off_t bytes_read = file_read(file, buffer, size);
-          f->eax = bytes_read;
+          return;
         }
+        off_t bytes_read = file_read(file, buffer, size);
+        f->eax = bytes_read;
       }
       break;
     case SYS_WRITE:
-      // verify args: int fd, const void* buffer, unsigned size
+      // args: int fd, const void* buffer, unsigned size
       int fd = args[1];
+      if (!is_pointer_valid(args[2])) {
+        f->eax = -1;
+        return;
+      }
       char* buffer = args[2];
       unsigned size = args[3];
       if (fd == 1) { // write to console: STDOUT
@@ -95,14 +121,14 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         struct file* file = get_from_fd_table(fd);
         if (file == NULL) {
           f->eax = -1;
-        } else {
-          off_t bytes_written = file_write(file, buffer, size);
-          f->eax = bytes_written;
+          return;
         }
+        off_t bytes_written = file_write(file, buffer, size);
+        f->eax = bytes_written;
       }
       break;
     case SYS_SEEK:
-      // verify args: int fd, unsigned position
+      // args: int fd, unsigned position
       int fd = args[1];
       unsigned position = args[2];
 
@@ -112,31 +138,39 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       }
       break;
     case SYS_TELL:
-      // verify args: int fd
+      // args: int fd
       int fd = args[1];
 
       struct file* file = get_from_fd_table(fd);
       if (file == NULL) {
         f->eax = -1;
-      } else {
-        off_t curr_pos = file_tell(file);
-        f->eax = curr_pos;
+        return;
       }
+      off_t curr_pos = file_tell(file);
+      f->eax = curr_pos;
       break;
     case SYS_CLOSE:
-      // verify args: int fd
+      // args: int fd
       int fd = args[1];
 
       struct file* file = get_from_fd_table(fd);
       if (file == NULL) {
         f->eax = -1;
-      } else {
-        file_close(file);
+        return;
       }
+      file_close(file);
       break;
     default:
       break;
   }
+}
+
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+  virtual memory, or a pointer to kernel virtual address space 
+  (above PHYS_BASE). False otherwise. */
+bool is_pointer_valid(void* ptr) {
+  struct thread* t = thread_current();
+  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
 }
 
 /* Helper function for File Operation Syscalls. On success, 
