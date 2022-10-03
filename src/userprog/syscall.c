@@ -1,9 +1,14 @@
+#include "filesys/file.h"
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/process.h"
+
+#include "lib/kernel/stdio.h"
+#include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -21,9 +26,43 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
   /* printf("System call number: %d\n", args[0]); */
 
-  if (args[0] == SYS_EXIT) {
+  int syscall_num = args[0];
+  if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
     f->eax = args[1];
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit();
+    return;
+  } else if (syscall_num == SYS_PRACTICE) {
+    f->eax = args[1] + 1;
+    return;
+  } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
+    int fd = args[1];
+    if (!is_pointer_valid(args[2])) {
+      f->eax = -1;
+      return;
+    }
+    void* buf = (void*)args[2];
+    size_t size = args[3];
+
+    if (fd == 1) { // STDOUT
+      putbuf(buf, size);
+      f->eax = size;
+    } else {
+      // file* file; // todo: get file from fdt
+      // off_t bytes_written = file_write(file, buf, size);
+      // f->eax = bytes_written;
+    }
+    return;
+  } else { // syscall DNE
+    process_exit();
+    return;
   }
+}
+
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+    virtual memory, or a pointer to kernel virtual address space 
+    (above PHYS_BASE). False otherwise. */
+bool is_pointer_valid(void* ptr) {
+  struct thread* t = thread_current();
+  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
 }
