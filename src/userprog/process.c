@@ -74,6 +74,8 @@ pid_t process_execute(const char* file_name) {
 static void start_process(void* file_name_) {
   char* file_name = (char*)file_name_;
   if (file_name == "" || file_name == NULL) {
+    palloc_free_page(file_name);
+    sema_up(&temporary);
     thread_exit();
     // q: do we need to return eax=-1 or some sort of error code here?
   }
@@ -110,6 +112,8 @@ static void start_process(void* file_name_) {
     size_t argv_size = 2; // Init to default size of 2
     char** argv = (char**)malloc(argv_size * sizeof(char*));
     if (argv == NULL) {
+      palloc_free_page(file_name);
+      sema_up(&temporary);
       thread_exit();
     }
 
@@ -123,11 +127,11 @@ static void start_process(void* file_name_) {
         argv = realloc(argv, argv_size * sizeof(char*));
         if (argv == NULL) {
           thread_exit();
-          // how to exit; success = false
         }
       }
-      argv[argc] = (char*)malloc(strlen(token) + 1);
+      argv[argc] = (char*)malloc(sizeof(char) * (strlen(token) + 1));
       if (argv[argc] == NULL) {
+        free(argv);
         thread_exit();
       }
       strlcpy(argv[argc], token, strlen(token) + 1);
@@ -516,16 +520,19 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
           sizeof(void*)); // one extra space for null at the end, one extra for beginning of argv
       addresses[argc] = NULL;
       for (int i = argc - 1; i >= 0; i--) {
-        *esp -= strlen(argv[i]); // q: we should decrement esp BEFORE copying right?
+        *esp -= strlen(argv[i]) + 1;
         memcpy(*esp, &argv[i], strlen(argv[i]));
         memcpy(&addresses[i], esp, sizeof *esp);
       }
 
       // stack align (account for all args plus null pointer and argv/argc)
+      // Stack align the stack pointer by decrementing esp such that the pointer will be at 16 -
+      // byte boundary by the time it pushes on argv and argc.
       while ((int)(*esp - (argc + 3) * 4) % 16 != 0) {
         *esp -= 1;
       }
 
+      // Iteratively push the values of `addresses` onto the stack from last to first, decrementing `esp` by 4 each time.
       for (int j = argc; j >= 0; j--) {
         *esp -= 4;
         memcpy(*esp, &addresses[j], 4);
@@ -538,17 +545,7 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
       memset(*esp, 0, 4);                         // set return
 
       free(addresses);
-
-      // todo: stack align!
-      // Stack align the stack pointer by decrementing esp such that the pointer will be at 16 -
-      // byte boundary by the time it pushes on argv and argc.
-
-      // Iteratively push the values of `addresses` onto the stack from last to first, decrementing `esp` by 4 each time.
-
-      // Push on the current value of the stack for `argv` and then push on the value of `argc`. Finally, push on a value of 0 for the return address.
-
-      // Free `argv` and `addresses`. q: are we allocating these to heap in the first place?
-
+      free(argv);
     } else {
       palloc_free_page(kpage);
     }
