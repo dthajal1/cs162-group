@@ -511,12 +511,33 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
     if (success) {
       *esp = PHYS_BASE;
-      void** addresses = (void**)malloc(argc * sizeof(void*));
+      void** addresses = (void**)malloc(
+          (argc + 2) *
+          sizeof(void*)); // one extra space for null at the end, one extra for beginning of argv
+      addresses[argc] = NULL;
       for (int i = argc - 1; i >= 0; i--) {
         *esp -= strlen(argv[i]); // q: we should decrement esp BEFORE copying right?
         memcpy(*esp, &argv[i], strlen(argv[i]));
         memcpy(&addresses[i], esp, sizeof *esp);
       }
+
+      // stack align (account for all args plus null pointer and argv/argc)
+      while ((int)(*esp - (argc + 3) * 4) % 16 != 0) {
+        *esp -= 1;
+      }
+
+      for (int j = argc; j >= 0; j--) {
+        *esp -= 4;
+        memcpy(*esp, &addresses[j], 4);
+      }
+      addresses[argc + 1] = *esp;
+
+      *esp -= 12;
+      memmove(*esp + 8, &addresses[argc + 1], 4); // set argv
+      memcpy(*esp + 4, &argc, 4);                 // set argc
+      memset(*esp, 0, 4);                         // set return
+
+      free(addresses);
 
       // todo: stack align!
       // Stack align the stack pointer by decrementing esp such that the pointer will be at 16 -
