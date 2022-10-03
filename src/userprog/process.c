@@ -43,7 +43,7 @@ void userprog_init(void) {
   success = t->pcb != NULL;
 
   /* Initialize file descriptor table, its entries and next_fd. */
-  t->fd_table = malloc(sizeof(struct fd_table));
+  t->fd_table = (struct fd_table*)malloc(sizeof(struct fd_table));
   if (t->fd_table == NULL) {
     // err handling
   } else {
