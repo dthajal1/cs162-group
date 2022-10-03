@@ -158,6 +158,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         f->eax = -1;
         return;
       }
+      remove_from_fd_table(fd);
       file_close(file);
       break;
     default:
@@ -210,4 +211,31 @@ struct file* get_from_fd_table(int fd) {
     }
   }
   return NULL;
+}
+
+/* Helper function for File Operation Syscalls. Removes fd from 
+  fd_table.
+*/
+void remove_from_fd_table(int fd) {
+  struct thread* t = thread_current();
+
+  struct fd_entry* entry_to_remove = NULL;
+
+  struct list_elem* e;
+  for (e = list_begin(&(t->fd_table->fd_entries)); e != list_end(&(t->fd_table->fd_entries));
+       e = list_next(e)) {
+    struct fd_entry* entry = list_entry(e, struct fd_entry, list_elem);
+    if (entry->fd == fd) {
+      entry_to_remove = entry;
+      break;
+    }
+  }
+
+  if (entry_to_remove != NULL) {
+    struct list_elem* elm_to_remove = &(entry_to_remove->elem);
+    elm_to_remove->prev->next = elm_to_remove->next;
+    elm_to_remove->next->prev = elm_to_remove->prev;
+
+    free(entry_to_remove);
+  }
 }
