@@ -73,11 +73,6 @@ pid_t process_execute(const char* file_name) {
    running. */
 static void start_process(void* file_name_) {
   char* file_name = (char*)file_name_;
-  if (file_name == "" || file_name == NULL) {
-    palloc_free_page(file_name);
-    sema_up(&temporary);
-    thread_exit();
-  }
 
   struct thread* t = thread_current();
   struct intr_frame if_;
@@ -86,6 +81,10 @@ static void start_process(void* file_name_) {
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
+
+  if (file_name == "" || file_name == NULL) {
+    success = false;
+  }
 
   /* Initialize process control block */
   if (success) {
@@ -112,37 +111,42 @@ static void start_process(void* file_name_) {
     char** argv = (char**)malloc(argv_size * sizeof(char*));
     char** temp;
     if (argv == NULL) {
-      palloc_free_page(file_name);
-      sema_up(&temporary);
-      thread_exit();
+      success = false;
     }
 
-    char* saveptr;
+    if (success) {
+      char* saveptr;
 
-    for (char* token = strtok_r(file_name, " ", &saveptr); token != NULL;
-         token = strtok_r(NULL, " ", &saveptr)) {
-      if (argc == argv_size) {
-        // Reallocate argv array size
-        argv_size *= 2;
-        temp = realloc(argv, argv_size * sizeof(char*));
-        if (temp == NULL) {
-          free(argv);
-          thread_exit();
-        } else {
-          argv = temp;
+      for (char* token = strtok_r(file_name, " ", &saveptr); token != NULL;
+           token = strtok_r(NULL, " ", &saveptr)) {
+
+        if (argc == argv_size) {
+          // Reallocate argv array size
+          argv_size *= 2;
+          temp = realloc(argv, argv_size * sizeof(char*));
+          if (temp == NULL) {
+            free(argv);
+            success = false;
+            break;
+          } else {
+            argv = temp;
+          }
         }
+        argv[argc] = (char*)malloc(sizeof(char) * (strlen(token) + 1));
+        if (argv[argc] == NULL) {
+          free(argv);
+          success = false;
+          break;
+        }
+        strlcpy(argv[argc], token, strlen(token) + 1);
+        argc++;
       }
-      argv[argc] = (char*)malloc(sizeof(char) * (strlen(token) + 1));
-      if (argv[argc] == NULL) {
-        free(argv);
-        thread_exit();
-      }
-      strlcpy(argv[argc], token, strlen(token) + 1);
-      argc++;
-    }
 
-    // Load executable
-    success = load(file_name, &if_.eip, &if_.esp, argc, argv);
+      // Load executable
+      if (success) {
+        success = load(file_name, &if_.eip, &if_.esp, argc, argv);
+      }
+    }
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
