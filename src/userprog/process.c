@@ -73,10 +73,6 @@ pid_t process_execute(const char* file_name) {
    running. */
 static void start_process(void* file_name_) {
   char* file_name = (char*)file_name_;
-  if (file_name == "" || file_name == NULL) {
-    thread_exit();
-    // q: do we need to return eax=-1 or some sort of error code here?
-  }
 
   struct thread* t = thread_current();
   struct intr_frame if_;
@@ -85,6 +81,10 @@ static void start_process(void* file_name_) {
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
+
+  if (file_name == "" || file_name == NULL) {
+    success = false;
+  }
 
   /* Initialize process control block */
   if (success) {
@@ -106,35 +106,47 @@ static void start_process(void* file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
 
     // Parse thru file_name
-    char* token;
     int argc = 0;
     size_t argv_size = 2; // Init to default size of 2
-    char* argv[argv_size] = (char*)malloc(
-        argv_size * sizeof(char)); //FIXME: THIS SHOULD NOT BE ALLOCATED TO THE HEAP RIGHT
+    char** argv = (char**)malloc(argv_size * sizeof(char*));
+    char** temp;
     if (argv == NULL) {
-      thread_exit();
-      // todo: how to exit? success = false?
+      success = false;
     }
-    char** saveptr;
 
-    for (token = strtok_r(file_name, " ", saveptr); token != NULL;
-         token = strtok_r(NULL, " ", saveptr)) {
-      if (argc == argv_size) {
-        // Reallocate argv array size
-        argv_size *= 2;
-        argv = realloc(argv, argv_size * sizeof(char));
-        if (argv == NULL) {
-          free(argv);
-          thread_exit();
-          // how to exit; success = false
+    if (success) {
+      char* saveptr;
+
+      for (char* token = strtok_r(file_name, " ", &saveptr); token != NULL;
+           token = strtok_r(NULL, " ", &saveptr)) {
+
+        if (argc == argv_size) {
+          // Reallocate argv array size
+          argv_size *= 2;
+          temp = realloc(argv, argv_size * sizeof(char*));
+          if (temp == NULL) {
+            free(argv);
+            success = false;
+            break;
+          } else {
+            argv = temp;
+          }
         }
+        argv[argc] = (char*)malloc(sizeof(char) * (strlen(token) + 1));
+        if (argv[argc] == NULL) {
+          free(argv);
+          success = false;
+          break;
+        }
+        strlcpy(argv[argc], token, strlen(token) + 1);
+        argc++;
       }
-      strlcpy(argv[argc], token, sizeof token);
-      argc++;
-    }
 
-    // Load executable
-    success = load(file_name, &if_.eip, &if_.esp, argc, argv);
+      // Load executable
+      if (success) {
+        success = load(file_name, &if_.eip, &if_.esp, argc, argv);
+      }
+    }
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
@@ -303,7 +315,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char** argv) {
+bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]) {
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
@@ -510,23 +522,37 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
     if (success) {
       *esp = PHYS_BASE;
-      char addresses[argc + 1];
-      addresses[argc] = 0;                  // fixme: should this be null terminator? not 0?
-      for (int i = argc - 1; i >= 0; i--) { // start from last element in argv
-        *esp -= sizeof argv[i];             // q: we should decrement esp BEFORE copying right?
-        strlcpy(**esp, argv[i], sizeof argv[i]);
-        strlcpy(addresses[i], *esp, sizeof *esp);
+      void** addresses = (void**)malloc(
+          (argc + 2) *
+          sizeof(void*)); // one extra space for null at the end, one extra for beginning of argv
+      addresses[argc] = NULL;
+      for (int i = argc - 1; i >= 0; i--) {
+        *esp -= strlen(argv[i]) + 1;
+        memcpy(*esp, &argv[i], strlen(argv[i]));
+        memcpy(&addresses[i], esp, sizeof *esp);
       }
-      // todo: stack align!
+
+      // stack align (account for all args plus null pointer and argv/argc)
       // Stack align the stack pointer by decrementing esp such that the pointer will be at 16 -
       // byte boundary by the time it pushes on argv and argc.
+      while ((int)(*esp - (argc + 3) * 4) % 16 != 0) {
+        *esp -= 1;
+      }
 
       // Iteratively push the values of `addresses` onto the stack from last to first, decrementing `esp` by 4 each time.
+      for (int j = argc; j >= 0; j--) {
+        *esp -= 4;
+        memcpy(*esp, &addresses[j], 4);
+      }
+      addresses[argc + 1] = *esp;
 
-      // Push on the current value of the stack for `argv` and then push on the value of `argc`. Finally, push on a value of 0 for the return address.
+      *esp -= 12;
+      memmove(*esp + 8, &addresses[argc + 1], 4); // set argv (location of argv[0] on the stack)
+      memcpy(*esp + 4, &argc, 4);                 // set argc
+      memset(*esp, 0, 4);                         // set return
 
-      // Free `argv` and `addresses`. q: are we allocating these to heap in the first place?
-
+      free(addresses);
+      free(argv);
     } else {
       palloc_free_page(kpage);
     }
