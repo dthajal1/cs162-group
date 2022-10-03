@@ -51,6 +51,9 @@ void userprog_init(void) {
     t->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
   }
 
+  /* Initialize global file lock. */
+  lock_init(&file_lock);
+
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }

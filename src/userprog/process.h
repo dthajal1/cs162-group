@@ -17,6 +17,9 @@ typedef tid_t pid_t;
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
 
+/* Global lock for file operation syscalls. */
+struct lock file_lock;
+
 /* File Descriptor Table. */
 struct fd_table {
   struct list fd_entries;

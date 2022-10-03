@@ -42,7 +42,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       }
       char* file_name = args[1];
       off_t initial_size = args[2];
+      lock_acquire(&file_lock);
       bool is_success = filesys_create(file_name, initial_size);
+      lock_release(&file_lock);
       f->eax = is_success;
       break;
     case SYS_REMOVE:
@@ -52,7 +54,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         return;
       }
       char* file_name = args[1];
+      lock_acquire(&file_lock);
       bool is_success = filesys_remove(file_name);
+      lock_release(&file_lock);
       f->eax = is_success;
       break;
     case SYS_OPEN:
@@ -62,7 +66,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         return;
       }
       char* file_name = args[1];
+      lock_acquire(&file_lock);
       struct file* file = filesys_open(file_name);
+      lock_release(&file_lock);
       if (file == NULL) {
         f->eax = -1;
         return;
@@ -79,7 +85,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         f->eax = -1;
         return;
       }
+      lock_acquire(&file_lock);
       off_t size = file_length(file);
+      lock_release(&file_lock);
       f->eax = size;
       break;
     case SYS_READ:
@@ -101,7 +109,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
           f->eax = -1;
           return;
         }
+        lock_acquire(&file_lock);
         off_t bytes_read = file_read(file, buffer, size);
+        lock_release(&file_lock);
         f->eax = bytes_read;
       }
       break;
@@ -123,7 +133,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
           f->eax = -1;
           return;
         }
+        lock_acquire(&file_lock);
         off_t bytes_written = file_write(file, buffer, size);
+        lock_release(&file_lock);
         f->eax = bytes_written;
       }
       break;
@@ -134,7 +146,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
       struct file* file = get_from_fd_table(fd);
       if (file != NULL) {
+        lock_acquire(&file_lock);
         file_seek(file, position);
+        lock_release(&file_lock);
       }
       break;
     case SYS_TELL:
@@ -146,7 +160,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         f->eax = -1;
         return;
       }
+      lock_acquire(&file_lock);
       off_t curr_pos = file_tell(file);
+      lock_release(&file_lock);
       f->eax = curr_pos;
       break;
     case SYS_CLOSE:
@@ -159,7 +175,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
         return;
       }
       remove_from_fd_table(fd);
+      lock_acquire(&file_lock);
       file_close(file);
+      lock_release(&file_lock);
       break;
     default:
       break;
