@@ -82,7 +82,7 @@ static void start_process(void* file_name_) {
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
 
-  if (file_name == "" || file_name == NULL) {
+  if (strcmp(file_name, "") == 0 || file_name == NULL) {
     success = false;
   }
 

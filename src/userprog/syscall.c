@@ -14,6 +14,14 @@ static void syscall_handler(struct intr_frame*);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+    virtual memory, or a pointer to kernel virtual address space 
+    (above PHYS_BASE). False otherwise. */
+static bool is_pointer_valid(void* ptr) {
+  struct thread* t = thread_current();
+  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
+}
+
 static void syscall_handler(struct intr_frame* f UNUSED) {
   uint32_t* args = ((uint32_t*)f->esp);
 
@@ -37,7 +45,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
     int fd = args[1];
-    if (!is_pointer_valid(args[2])) {
+    if (!is_pointer_valid((void*)args[2])) {
       f->eax = -1;
       return;
     }
@@ -57,12 +65,4 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     process_exit();
     return;
   }
-}
-
-/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
-    virtual memory, or a pointer to kernel virtual address space 
-    (above PHYS_BASE). False otherwise. */
-bool is_pointer_valid(void* ptr) {
-  struct thread* t = thread_current();
-  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
 }
