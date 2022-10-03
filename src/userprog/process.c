@@ -121,7 +121,6 @@ static void start_process(void* cmd_) {
 
       for (char* token = strtok_r(cmd, " ", &saveptr); token != NULL;
            token = strtok_r(NULL, " ", &saveptr)) {
-        // printf("%s: should be my token\n", token);
 
         if (argc == argv_size) {
           // Reallocate argv array size
@@ -526,15 +525,16 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
     if (success) {
       *stack_ptr = PHYS_BASE;
+      // ADDDRESSES:
+      // [0...argc-1] for args' addresses
+      // [argc] for NULL ptr
+      // [argc+1] for address of argv itself
       char** addresses = (char**)malloc(
           (argc + 2) *
           sizeof(char*)); // one extra space for null at the end, one extra for beginning of argv
       addresses[argc] = NULL;
       for (int i = argc - 1; i >= 0; i--) {
         *stack_ptr -= (strlen(argv[i]) + 1);
-        // printf("%s should be my token\n", argv[i]);
-        // printf("%d is the strlen of my token\n", strlen(argv[i]));
-
         memset(*stack_ptr + strlen(argv[i]), 0, 1);
         memcpy(*stack_ptr, argv[i], strlen(argv[i]));
         memcpy(&addresses[i], stack_ptr, sizeof *stack_ptr);
@@ -551,9 +551,6 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
       for (int j = argc; j >= 0; j--) {
         *stack_ptr -= 4;
         char* address = addresses[j];
-        // printf("at addresses[%d], %x should be my value\n", j, address);
-        // printf("%s is what it looks like printed to string\n", address);
-
         memcpy(*stack_ptr, &address, 4);
       }
       addresses[argc + 1] = *stack_ptr;
