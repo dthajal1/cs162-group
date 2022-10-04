@@ -588,6 +588,11 @@ static bool install_page(void* upage, void* kpage, bool writable) {
           pagedir_set_page(t->pcb->pagedir, upage, kpage, writable));
 }
 
+/* Helper func to get the shared struct from a child pid. */
+shared_status_t* get_shared_struct(pid_t child_pid) {
+  // TODO
+}
+
 /* Returns true if t is the main thread of the process p */
 bool is_main_thread(struct thread* t, struct process* p) { return p->main_thread == t; }
 

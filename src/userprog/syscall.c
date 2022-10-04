@@ -1,3 +1,4 @@
+#include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "userprog/syscall.h"
 #include <stdio.h>
@@ -35,7 +36,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   /* printf("System call number: %d\n", args[0]); */
 
   int syscall_num = args[0];
-  if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
+  /** PROCESS CONTROL SYSCALLS **/
+  if (syscall_num == SYS_EXIT) {
     f->eax = args[1];
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit();
@@ -43,13 +45,31 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_PRACTICE) {
     f->eax = args[1] + 1;
     return;
-  } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
+  } else if (syscall_num == SYS_HALT) {
+    shutdown_power_off();
+  } else if (syscall_num == SYS_EXEC) {
+    // todo: error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
+    int child_pid = process_execute((char*)args[1]);
+    if (child_pid == -1) {
+      f->eax = -1;
+      return;
+    }
+    shared_status_t* shared = get_shared_struct(child_pid); //todo
+    f->eax = shared->exit_code;
+    return;
+  } else if (syscall_num == SYS_WAIT) {
+    // todo: Error-check that args[1] argument address is in valid user memory
+    int exit_code = process_wait(args[1]);
+    f->eax = exit_code;
+    return;
+    /** FILE OPERATION SYSCALLS (below) **/
+  } else if (syscall_num == SYS_WRITE) {
     int fd = args[1];
     if (!is_pointer_valid((void*)args[2])) {
       f->eax = -1;
       return;
     }
-    void* buf = (void*)args[2];
+    char* buf = (char*)args[2];
     size_t size = args[3];
 
     if (fd == 1) { // STDOUT
