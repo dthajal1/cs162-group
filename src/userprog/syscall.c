@@ -48,8 +48,13 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_HALT) {
     shutdown_power_off();
   } else if (syscall_num == SYS_EXEC) {
-    // todo: error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
-    int child_pid = process_execute((char*)args[1]);
+    char* cmd = (char*)args[1];
+    // error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
+    if (!is_pointer_valid(&cmd) || !is_pointer_valid(cmd)) {
+      f->eax = -1;
+      return;
+    }
+    int child_pid = process_execute(cmd);
     if (child_pid == -1) {
       f->eax = -1;
       return;
@@ -58,7 +63,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = shared->exit_code;
     return;
   } else if (syscall_num == SYS_WAIT) {
-    // todo: Error-check that args[1] argument address is in valid user memory
+    // QUESTION: todo as per gradescope design doc rubric: Error-check that args[1] argument address is in valid user memory. BUT isn't args[1] just an int???
     int exit_code = process_wait(args[1]);
     f->eax = exit_code;
     return;
