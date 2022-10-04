@@ -45,7 +45,6 @@ struct process {
   char process_name[16];      /* Name of the main thread */
   struct thread* main_thread; /* Pointer to main thread */
 
-  struct process* parent; // Ptr to parent process
   // Add synchronization for parent-child shared struct info
   struct list children_shared_structs; // List of my children shared struct
   shared_status_t* my_shared_status;   // Ptr to MY shared_status_t w/ my parent
@@ -58,6 +57,7 @@ int process_wait(pid_t);
 void process_exit(void);
 void process_activate(void);
 
+shared_status_t* shared_struct_init(void);
 shared_status_t* get_shared_struct(pid_t);
 
 bool is_main_thread(struct thread*, struct process*);
