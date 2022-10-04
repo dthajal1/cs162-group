@@ -20,7 +20,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-static struct semaphore temporary;
+// static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]);
@@ -54,7 +54,7 @@ pid_t process_execute(const char* cmd) {
   char* cmd_copy;
   tid_t tid;
 
-  sema_init(&temporary, 0);
+  // sema_init(&temporary, 0);
   /* Make a copy of CMD.
      Otherwise there's a race between the caller and load(). */
   cmd_copy = palloc_get_page(0);
@@ -164,7 +164,7 @@ static void start_process(void* cmd_) {
   /* Clean up. Exit on failure or jump to userspace */
   palloc_free_page(cmd);
   if (!success) {
-    sema_up(&temporary);
+    // sema_up(&temporary);
     thread_exit();
   }
 
@@ -187,9 +187,34 @@ static void start_process(void* cmd_) {
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(pid_t child_pid UNUSED) {
-  sema_down(&temporary);
-  return 0;
+int process_wait(pid_t child_pid) {
+  // sema_down(&temporary); // QUESTION: i think we need to delete all this temporary sema stuff
+
+  shared_status_t* child_shared = get_shared_struct(child_pid);
+  if (child_shared == NULL) {
+    // could not find child from this parent
+    return -1;
+  } else if (child_shared->exited) {
+    return child_shared->exit_code;
+  } else if (child_shared->already_waiting) {
+    // error if this process has already called process_wait on this child
+    return -1;
+  }
+
+  child_shared->already_waiting = true;
+  sema_down(child_shared->sema);
+  child_shared->already_waiting = false;
+  int exit_code = child_shared->exit_code;
+
+  lock_acquire(&child_shared->ref_lock);
+  child_shared->ref_cnt--;
+  lock_release(&child_shared->ref_lock);
+  if (child_shared->ref_cnt == 0) { // cleanup
+    list_remove(&child_shared->elem);
+    free(child_shared);
+  }
+
+  return exit_code;
 }
 
 /* Free the current process's resources. */
@@ -227,7 +252,7 @@ void process_exit(void) {
   cur->pcb = NULL;
   free(pcb_to_free);
 
-  sema_up(&temporary);
+  // sema_up(&temporary);
   thread_exit();
 }
 
@@ -588,9 +613,36 @@ static bool install_page(void* upage, void* kpage, bool writable) {
           pagedir_set_page(t->pcb->pagedir, upage, kpage, writable));
 }
 
-/* Helper func to get the shared struct from a child pid. */
+/* Initialize a shared struct for this current process & the given child process. 
+@returns NULL if errored. */
+shared_status_t* shared_struct_init(pid_t child_pid) {
+  shared_status_t* shared = (shared_status_t*)malloc(sizeof(shared_status_t));
+  if (shared == NULL)
+    return NULL;
+  shared->child_pid = child_pid;
+  sema_init(shared->sema, 0);
+  lock_init(&shared->ref_lock);
+  shared->exit_code = 0;
+  shared->exited = false;
+  shared->already_waiting = false;
+  shared->ref_cnt = 2; // ??? right? do we init as 2???
+
+  return shared;
+}
+
+/* Helper func to get the shared struct from a child pid. 
+Returns NULL if DNE. */
 shared_status_t* get_shared_struct(pid_t child_pid) {
-  // TODO
+  struct process* curr_process = thread_current()->pcb;
+  struct list children = curr_process->children_shared_structs;
+  // get matching child shared struct via children list of shared structs
+  struct list_elem* e;
+  for (e = list_begin(&children); e != list_end(&children); e = list_next(e)) {
+    shared_status_t* shared = list_entry(e, shared_status_t, elem);
+    if (shared->child_pid == child_pid)
+      return shared;
+  }
+  return NULL;
 }
 
 /* Returns true if t is the main thread of the process p */

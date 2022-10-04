@@ -26,9 +26,12 @@ typedef struct shared_status {
 
   int exit_code;
   bool exited;
+  bool already_waiting; // Is this child already being waited on by parent?
 
   struct lock ref_lock;
   int ref_cnt;
+
+  struct list_elem elem; // List elem for this process to be in parents' list
 } shared_status_t;
 
 /* The process control block for a given process. Since
@@ -42,11 +45,10 @@ struct process {
   char process_name[16];      /* Name of the main thread */
   struct thread* main_thread; /* Pointer to main thread */
 
+  struct process* parent; // Ptr to parent process
   // Add synchronization for parent-child shared struct info
-  struct list children;              // List of my children processes
-  struct list_elem children_elem;    // List elem for this process to be in parents' list
-  struct process* parent;            // Ptr to parent process
-  shared_status_t* my_shared_status; // Ptr to MY shared_status_t w/ my parent
+  struct list children_shared_structs; // List of my children shared struct
+  shared_status_t* my_shared_status;   // Ptr to MY shared_status_t w/ my parent
 };
 
 void userprog_init(void);
