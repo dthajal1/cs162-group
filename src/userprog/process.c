@@ -89,15 +89,16 @@ pid_t process_execute(const char* cmd) {
   tid = thread_create(file_name, PRI_DEFAULT, start_process, &args);
   if (tid == TID_ERROR) {
     palloc_free_page(cmd_copy);
-    // FREE SHARED STRUCT IF FAILED? OR SHOULD PROCESS_EXIT HANDLE THIS?
+    decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
   }
 
   /* Set the shared's PID, then WAIT. Will end wait when loaded. */
   shared->child_pid = tid; // QUESTION: IS TID == PID HERE LOL
   sema_down(shared->sema);
-  if (shared->exit_code != 0)
-    // FREE SHARED STRUCT IF FAILED? OR SHOULD PROCESS_EXIT HANDLE THIS?
-    return TID_ERROR; // could not load cmd
+  if (shared->exit_code != 0) {
+    decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
+    return TID_ERROR;          // could not load cmd
+  }
 
   return tid;
 }
