@@ -220,7 +220,7 @@ void process_exit(void) {
   struct list_elem* e;
   for (e = list_begin(&(cur->fd_table->fd_entries)); e != list_end(&(cur->fd_table->fd_entries));
        e = list_next(e)) {
-    struct fd_entry* entry = list_entry(e, struct fd_entry, list_elem);
+    struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
     file_close(entry->file);
     // TODO: free entry since we malloced it
   }

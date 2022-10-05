@@ -10,8 +10,11 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 
 static void syscall_handler(struct intr_frame*);
+
+struct file* get_from_fd_table(int fd);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
@@ -185,32 +188,23 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     off_t curr_pos = file_tell(file);
     lock_release(&file_lock);
     f->eax = curr_pos;
-    break;
-    case SYS_CLOSE:
-      // args: int fd
-      int fd = args[1];
+  } else if (syscall_num == SYS_CLOSE) {
+    // args: int fd
+    int fd = args[1];
 
-      struct file* file = get_from_fd_table(fd);
-      if (file == NULL) {
-        f->eax = -1;
-        return;
-      }
-      remove_from_fd_table(fd);
-      lock_acquire(&file_lock);
-      file_close(file);
-      lock_release(&file_lock);
+    struct file* file = get_from_fd_table(fd);
+    if (file == NULL) {
+      f->eax = -1;
+      return;
+    }
+    remove_from_fd_table(fd);
+    lock_acquire(&file_lock);
+    file_close(file);
+    lock_release(&file_lock);
   } else { // syscall DNE
     process_exit();
     return;
   }
-}
-
-/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
-  virtual memory, or a pointer to kernel virtual address space 
-  (above PHYS_BASE). False otherwise. */
-bool is_pointer_valid(void* ptr) {
-  struct thread* t = thread_current();
-  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
 }
 
 /* Helper function for File Operation Syscalls. On success, 
@@ -244,7 +238,7 @@ struct file* get_from_fd_table(int fd) {
 
   for (e = list_begin(&(t->fd_table->fd_entries)); e != list_end(&(t->fd_table->fd_entries));
        e = list_next(e)) {
-    struct fd_entry* entry = list_entry(e, struct fd_entry, list_elem);
+    struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
     if (entry->fd == fd) {
       return entry->file;
     }
@@ -263,7 +257,7 @@ void remove_from_fd_table(int fd) {
   struct list_elem* e;
   for (e = list_begin(&(t->fd_table->fd_entries)); e != list_end(&(t->fd_table->fd_entries));
        e = list_next(e)) {
-    struct fd_entry* entry = list_entry(e, struct fd_entry, list_elem);
+    struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
     if (entry->fd == fd) {
       entry_to_remove = entry;
       break;

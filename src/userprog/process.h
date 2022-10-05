@@ -32,7 +32,7 @@ struct fd_entry {
   struct list_elem elem; // doubly linked list functionality
   int fd;
   struct file* file;
-}
+};
 
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
