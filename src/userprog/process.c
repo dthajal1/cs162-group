@@ -43,6 +43,9 @@ void userprog_init(void) {
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
+
+  /* Init shared struct list */
+  list_init(&t->pcb->children_shared_structs);
 }
 
 struct new_thread_arg_struct {
@@ -55,7 +58,7 @@ static void decrement_ref_cnt(shared_status_t* shared) {
   lock_acquire(&shared->ref_lock);
   shared->ref_cnt--;
   lock_release(&shared->ref_lock);
-  if (shared->ref_cnt == 0) { // cleanup
+  if (shared->ref_cnt == 0) { // If ref_cnt = 0, free shared struct
     list_remove(&shared->elem);
     free(shared);
   }
@@ -80,6 +83,7 @@ pid_t process_execute(const char* cmd) {
 
   /* Create new shared struct for the child process we're about to start. */
   shared_status_t* shared = shared_struct_init();
+  list_push_back(&thread_current()->pcb->children_shared_structs, &shared->elem);
 
   struct new_thread_arg_struct args;
   args.cmd = cmd_copy;
@@ -115,7 +119,7 @@ static void start_process(void* arguments) {
   bool success, pcb_success;
 
   /* Allocate process control block */
-  struct process* new_pcb = malloc(sizeof(struct process));
+  struct process* new_pcb = (struct process*)malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
 
   if (strcmp(cmd, "") == 0 || cmd == NULL) {
@@ -260,6 +264,13 @@ void process_exit(void) {
     thread_exit();
     NOT_REACHED();
   }
+
+  /* Clean up shared thread scheduling logic, free shared if ref_cnt=0 */
+  shared_status_t* shared = cur->pcb->my_shared_status;
+  shared->exit_code = 0;
+  shared->exited = true;
+  sema_up(shared->sema);
+  decrement_ref_cnt(shared);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
