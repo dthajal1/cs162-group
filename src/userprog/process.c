@@ -210,24 +210,22 @@ void process_exit(void) {
   uint32_t* pd;
 
   /* If this thread does not have a FD_TABLE, don't worry. */
-  // TODO: do we need this?
-  if (cur->fd_table == NULL) {
-    thread_exit();
-    NOT_REACHED();
-  }
 
-  /* Close all open files and free the FD_TABLE of this process. */
-  struct list_elem* e;
-  for (e = list_begin(&(cur->fd_table->fd_entries)); e != list_end(&(cur->fd_table->fd_entries));
-       e = list_next(e)) {
-    struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
-    file_close(entry->file);
-    // TODO: free entry since we malloced it
-  }
+  // if fd_table exists, free it
+  if (cur->fd_table != NULL) {
+    /* Close all open files and free the FD_TABLE of this process. */
+    struct list_elem* e;
+    for (e = list_begin(&(cur->fd_table->fd_entries)); e != list_end(&(cur->fd_table->fd_entries));
+         e = list_next(e)) {
+      struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
+      file_close(entry->file);
+      // TODO: free entry since we malloced it
+    }
 
-  struct fd_table* fd_table_to_free = cur->fd_table;
-  cur->fd_table = NULL;
-  free(fd_table_to_free);
+    struct fd_table* fd_table_to_free = cur->fd_table;
+    cur->fd_table = NULL;
+    free(fd_table_to_free);
+  }
 
   /* If this thread does not have a PCB, don't worry */
   if (cur->pcb == NULL) {
