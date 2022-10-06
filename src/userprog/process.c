@@ -20,6 +20,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]);
@@ -45,7 +46,9 @@ void userprog_init(void) {
   ASSERT(success);
 
   /* Init shared struct list */
-  list_init(&t->pcb->children_shared_structs);
+  struct list* children = (struct list*)malloc(sizeof(struct list));
+  list_init(children);
+  t->pcb->children_shared_structs = children;
 }
 
 struct new_thread_arg_struct {
@@ -72,6 +75,7 @@ pid_t process_execute(const char* cmd) {
   char* cmd_copy;
   tid_t tid;
 
+  sema_init(&temporary, 0);
   /* Make a copy of CMD.
      Otherwise there's a race between the caller and load(). */
   cmd_copy = palloc_get_page(0);
@@ -83,7 +87,7 @@ pid_t process_execute(const char* cmd) {
 
   /* Create new shared struct for the child process we're about to start. */
   shared_status_t* shared = shared_struct_init();
-  list_push_back(&thread_current()->pcb->children_shared_structs, &shared->elem);
+  list_push_back(thread_current()->pcb->children_shared_structs, &shared->elem);
 
   struct new_thread_arg_struct args;
   args.cmd = cmd_copy;
@@ -97,7 +101,7 @@ pid_t process_execute(const char* cmd) {
   }
 
   /* Set the shared's PID, then WAIT. Will end wait when loaded. */
-  shared->child_pid = tid; // QUESTION: IS TID == PID HERE LOL
+  shared->child_pid = tid; // QUESTION11: IS TID == PID HERE LOL
   sema_down(shared->sema);
   if (shared->exit_code != 0) {
     decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
@@ -119,7 +123,7 @@ static void start_process(void* arguments) {
   bool success, pcb_success;
 
   /* Allocate process control block */
-  struct process* new_pcb = (struct process*)malloc(sizeof(struct process));
+  struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
 
   if (strcmp(cmd, "") == 0 || cmd == NULL) {
@@ -207,6 +211,7 @@ static void start_process(void* arguments) {
     shared->exit_code = -1;
     decrement_ref_cnt(shared);
     sema_up(shared->sema);
+    sema_up(&temporary);
     thread_exit();
   }
 
@@ -296,6 +301,7 @@ void process_exit(void) {
   cur->pcb = NULL;
   free(pcb_to_free);
 
+  sema_up(&temporary);
   thread_exit();
 }
 
@@ -676,10 +682,10 @@ shared_status_t* shared_struct_init() {
 Returns NULL if DNE. */
 shared_status_t* get_shared_struct(pid_t child_pid) {
   struct process* curr_process = thread_current()->pcb;
-  struct list children = curr_process->children_shared_structs;
+  struct list* children = curr_process->children_shared_structs;
   // get matching child shared struct via children list of shared structs
   struct list_elem* e;
-  for (e = list_begin(&children); e != list_end(&children); e = list_next(e)) {
+  for (e = list_begin(children); e != list_end(children); e = list_next(e)) {
     shared_status_t* shared = list_entry(e, shared_status_t, elem);
     if (shared->child_pid == child_pid)
       return shared;

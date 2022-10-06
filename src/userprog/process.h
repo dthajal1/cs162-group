@@ -46,8 +46,8 @@ struct process {
   struct thread* main_thread; /* Pointer to main thread */
 
   // Add synchronization for parent-child shared struct info
-  struct list children_shared_structs; // List of my children shared struct
-  shared_status_t* my_shared_status;   // Ptr to MY shared_status_t w/ my parent
+  struct list* children_shared_structs; // List of my children shared struct
+  shared_status_t* my_shared_status;    // Ptr to MY shared_status_t w/ my parent
 };
 
 void userprog_init(void);
