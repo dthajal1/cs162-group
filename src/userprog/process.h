@@ -31,7 +31,7 @@ typedef struct shared_status {
   struct lock ref_lock;
   int ref_cnt;
 
-  struct list_elem elem; // List elem for this process to be in parents' list
+  struct list_elem shared_elem; // List elem for this process to be in parents' list
 } shared_status_t;
 
 /* The process control block for a given process. Since
@@ -46,13 +46,13 @@ struct process {
   struct thread* main_thread; /* Pointer to main thread */
 
   // Add synchronization for parent-child shared struct info
-  struct list* children_shared_structs; // List of my children shared struct
-  shared_status_t* my_shared_status;    // Ptr to MY shared_status_t w/ my parent
+  struct list children_shared_structs; // List of my children shared struct
+  shared_status_t* my_shared_status;   // Ptr to MY shared_status_t w/ my parent
 };
 
 void userprog_init(void);
 
-pid_t process_execute(const char* cmd);
+pid_t process_execute(char* cmd);
 int process_wait(pid_t);
 void process_exit(void);
 void process_activate(void);

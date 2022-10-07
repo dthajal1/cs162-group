@@ -50,7 +50,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_EXEC) {
     char* cmd = (char*)args[1];
     // error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
-    if (!is_pointer_valid(&cmd) || !is_pointer_valid(cmd)) {
+    if (!is_pointer_valid(cmd)) {
       f->eax = -1;
       return;
     }
