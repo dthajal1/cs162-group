@@ -101,7 +101,7 @@ static void start_process(void* cmd_) {
     /* Initialize file descriptor table, its entries and next_fd. */
     t->pcb->fd_table = (struct fd_table*)malloc(sizeof(struct fd_table));
     if (t->pcb->fd_table == NULL) {
-      // err handling
+      // TODO: err handling
     } else {
       list_init(&(t->pcb->fd_table->fd_entries));
       t->pcb->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
@@ -209,28 +209,26 @@ void process_exit(void) {
   struct thread* cur = thread_current();
   uint32_t* pd;
 
-  /* If this thread does not have a FD_TABLE, don't worry. */
-
-  // if fd_table exists, free it
-  if (cur->pcb->fd_table != NULL) {
-    /* Close all open files and free the FD_TABLE of this process. */
-    struct list_elem* e;
-    for (e = list_begin(&(cur->pcb->fd_table->fd_entries));
-         e != list_end(&(cur->pcb->fd_table->fd_entries)); e = list_next(e)) {
-      struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
-      file_close(entry->file);
-      // TODO: free entry since we malloced it
-    }
-
-    struct fd_table* fd_table_to_free = cur->pcb->fd_table;
-    cur->pcb->fd_table = NULL;
-    free(fd_table_to_free);
-  }
-
   /* If this thread does not have a PCB, don't worry */
   if (cur->pcb == NULL) {
     thread_exit();
     NOT_REACHED();
+  }
+
+  /* Clean up fd_table of this process if it exists. */
+  if (cur->pcb->fd_table != NULL) {
+    struct fd_table* fd_table_to_free = cur->pcb->fd_table;
+
+    struct list_elem* e;
+    for (e = list_begin(&(fd_table_to_free->fd_entries));
+         e != list_end(&(fd_table_to_free->fd_entries)); e = list_next(e)) {
+      struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
+      file_close(entry->file);
+      free(entry);
+    }
+
+    cur->pcb->fd_table = NULL;
+    free(fd_table_to_free);
   }
 
   /* Destroy the current process's page directory and switch back
@@ -367,6 +365,9 @@ bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char*
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
+
+  /* Running executables shouldn't be modified. */
+  file_deny_write(file);
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
