@@ -44,6 +44,8 @@ void userprog_init(void) {
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
+
+  list_init(&t->pcb->children_shared_structs);
 }
 
 struct new_thread_arg_struct {
@@ -82,9 +84,6 @@ pid_t process_execute(char* cmd) {
 
   /* Create new shared struct for the child process we're about to start. */
   shared_status_t* shared = shared_struct_init();
-
-  /* Init shared struct list */
-  list_init(&thread_current()->pcb->children_shared_structs);
   list_push_back(&thread_current()->pcb->children_shared_structs, &shared->shared_elem);
 
   struct new_thread_arg_struct args;
@@ -139,6 +138,7 @@ static void start_process(void* arguments) {
     t->pcb->main_thread = t;
     strlcpy(t->pcb->process_name, t->name, sizeof t->name);
 
+    list_init(&t->pcb->children_shared_structs);
     t->pcb->my_shared_status = shared;
   }
 
