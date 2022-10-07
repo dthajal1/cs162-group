@@ -58,7 +58,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       f->eax = -1;
       return;
     }
-    shared_status_t* shared = get_shared_struct(child_pid); //todo
+    shared_status_t* shared = get_shared_struct(child_pid);
     f->eax = shared->exit_code;
     return;
   } else if (syscall_num == SYS_WAIT) {
