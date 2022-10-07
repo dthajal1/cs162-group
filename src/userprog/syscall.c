@@ -25,7 +25,7 @@ void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "
     (above PHYS_BASE). False otherwise. */
 static bool is_pointer_valid(void* ptr) {
   struct thread* t = thread_current();
-  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
+  return ptr != NULL && !is_kernel_vaddr(ptr) && pagedir_get_page(t->pcb->pagedir, ptr) != NULL;
 }
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
@@ -77,7 +77,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     lock_release(&file_lock);
     if (file == NULL) {
       f->eax = -1;
-      process_exit();
       return;
     }
 
