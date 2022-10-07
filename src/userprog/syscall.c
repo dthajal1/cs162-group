@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -12,21 +13,15 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 
-static validate_pointer(struct intr_frame* f, void* ptr);
-
 static void syscall_handler(struct intr_frame*);
-
-struct file* get_from_fd_table(int fd);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
-/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
-    virtual memory, or a pointer to kernel virtual address space 
-    (above PHYS_BASE). False otherwise. */
-static bool is_pointer_valid(void* ptr) {
-  struct thread* t = thread_current();
-  return ptr != NULL && !is_kernel_vaddr(ptr) && pagedir_get_page(t->pcb->pagedir, ptr) != NULL;
-}
+int add_to_fd_table(struct file* file);
+struct file* get_from_fd_table(int fd);
+void remove_from_fd_table(int fd);
+static bool is_pointer_valid(void* ptr);
+static void validate_pointer(struct intr_frame* f, void* ptr);
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
   uint32_t* args = ((uint32_t*)f->esp);
@@ -50,9 +45,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = args[1] + 1;
     return;
   } else if (syscall_num == SYS_CREATE) { /** FILE OPERATION SYSCALLS **/
-    validate_pointer(f, args[1]);
+    validate_pointer(f, (char*)args[1]);
 
-    char* file_name = args[1];
+    char* file_name = (char*)args[1];
     off_t initial_size = args[2];
     lock_acquire(&file_lock);
     bool is_success = filesys_create(file_name, initial_size);
@@ -60,18 +55,18 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_REMOVE) {
-    validate_pointer(f, args[1]);
+    validate_pointer(f, (char*)args[1]);
 
-    char* file_name = args[1];
+    char* file_name = (char*)args[1];
     lock_acquire(&file_lock);
     bool is_success = filesys_remove(file_name);
     lock_release(&file_lock);
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_OPEN) {
-    validate_pointer(f, args[1]);
+    validate_pointer(f, (char*)args[1]);
 
-    char* file_name = args[1];
+    char* file_name = (char*)args[1];
     lock_acquire(&file_lock);
     struct file* file = filesys_open(file_name);
     lock_release(&file_lock);
@@ -98,14 +93,13 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_READ) {
     int fd = args[1];
-    validate_pointer(f, args[2]);
+    validate_pointer(f, (char*)args[2]);
 
-    char* buffer = args[2];
+    char* buffer = (char*)args[2];
     unsigned size = args[3];
 
-    if (fd == 0) { // read from STDIN_FILENO
-      uint8_t key = input_getc();
-      // TODO: read to buffer
+    if (fd == 0) {  // read from STDIN_FILENO
+      input_getc(); // TODO: make sure this handles everything
     } else {
       struct file* file = get_from_fd_table(fd);
       if (file == NULL) {
@@ -121,9 +115,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_WRITE) {
     // args: int fd, const void* buffer, unsigned size
     int fd = args[1];
-    validate_pointer(f, args[2]);
+    validate_pointer(f, (char*)args[2]);
 
-    char* buffer = args[2];
+    char* buffer = (char*)args[2];
     unsigned size = args[3];
     if (fd == 1) { // write to console: STDOUT
       putbuf(buffer, size);
@@ -251,7 +245,15 @@ void remove_from_fd_table(int fd) {
   }
 }
 
-static validate_pointer(struct intr_frame* f, void* ptr) {
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+    virtual memory, or a pointer to kernel virtual address space 
+    (above PHYS_BASE). False otherwise. */
+static bool is_pointer_valid(void* ptr) {
+  struct thread* t = thread_current();
+  return ptr != NULL && !is_kernel_vaddr(ptr) && pagedir_get_page(t->pcb->pagedir, ptr) != NULL;
+}
+
+static void validate_pointer(struct intr_frame* f, void* ptr) {
   if (!is_pointer_valid(ptr)) {
     f->eax = -1;
     printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
