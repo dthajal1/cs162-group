@@ -36,8 +36,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   /* printf("System call number: %d\n", args[0]); */
 
   int syscall_num = args[0];
-  /** PROCESS CONTROL SYSCALLS **/
-  if (syscall_num == SYS_EXIT) {
+  if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
     f->eax = args[1];
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit();
@@ -68,13 +67,13 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = exit_code;
     return;
     /** FILE OPERATION SYSCALLS (below) **/
-  } else if (syscall_num == SYS_WRITE) {
+  } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
     int fd = args[1];
     if (!is_pointer_valid((void*)args[2])) {
       f->eax = -1;
       return;
     }
-    char* buf = (char*)args[2];
+    void* buf = (void*)args[2];
     size_t size = args[3];
 
     if (fd == 1) { // STDOUT

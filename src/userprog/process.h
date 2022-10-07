@@ -2,7 +2,6 @@
 #define USERPROG_PROCESS_H
 
 #include "threads/thread.h"
-#include "threads/synch.h"
 #include <stdint.h>
 
 // At most 8MB can be allocated to the stack
@@ -22,7 +21,7 @@ typedef void (*stub_fun)(pthread_fun, void*);
  * track of respective statuses **/
 typedef struct shared_status {
   pid_t child_pid;
-  struct semaphore* sema;
+  struct semaphore sema;
 
   int exit_code;
   bool exited;
@@ -52,13 +51,10 @@ struct process {
 
 void userprog_init(void);
 
-pid_t process_execute(char* cmd);
+pid_t process_execute(const char* file_name);
 int process_wait(pid_t);
 void process_exit(void);
 void process_activate(void);
-
-shared_status_t* shared_struct_init(void);
-shared_status_t* get_shared_struct(pid_t);
 
 bool is_main_thread(struct thread*, struct process*);
 pid_t get_pid(struct process*);
