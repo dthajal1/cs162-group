@@ -1,4 +1,3 @@
-#include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "userprog/syscall.h"
 #include <stdio.h>
@@ -44,29 +43,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_PRACTICE) {
     f->eax = args[1] + 1;
     return;
-  } else if (syscall_num == SYS_HALT) {
-    shutdown_power_off();
-  } else if (syscall_num == SYS_EXEC) {
-    char* cmd = (char*)args[1];
-    // error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
-    if (!is_pointer_valid(cmd)) {
-      f->eax = -1;
-      return;
-    }
-    int child_pid = process_execute(cmd);
-    if (child_pid == -1) {
-      f->eax = -1;
-      return;
-    }
-    shared_status_t* shared = get_shared_struct(child_pid); //todo
-    f->eax = shared->exit_code;
-    return;
-  } else if (syscall_num == SYS_WAIT) {
-    // QUESTION: todo as per gradescope design doc rubric: Error-check that args[1] argument address is in valid user memory. BUT isn't args[1] just an int???
-    int exit_code = process_wait(args[1]);
-    f->eax = exit_code;
-    return;
-    /** FILE OPERATION SYSCALLS (below) **/
   } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
     int fd = args[1];
     if (!is_pointer_valid((void*)args[2])) {
