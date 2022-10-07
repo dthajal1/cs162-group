@@ -17,6 +17,22 @@ typedef tid_t pid_t;
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
 
+/** Shared status struct to help parent-child processes keep 
+ * track of respective statuses **/
+typedef struct shared_status {
+  pid_t child_pid;
+  struct semaphore sema;
+
+  int exit_code;
+  bool exited;
+  bool already_waiting; // Is this child already being waited on by parent?
+
+  struct lock ref_lock;
+  int ref_cnt;
+
+  struct list_elem shared_elem; // List elem for this process to be in parents' list
+} shared_status_t;
+
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
    PCB from the TCB. All TCBs in a process will have a pointer
@@ -27,6 +43,10 @@ struct process {
   uint32_t* pagedir;          /* Page directory. */
   char process_name[16];      /* Name of the main thread */
   struct thread* main_thread; /* Pointer to main thread */
+
+  // Add synchronization for parent-child shared struct info
+  struct list children_shared_structs; // List of my children shared struct
+  shared_status_t* my_shared_status;   // Ptr to MY shared_status_t w/ my parent
 };
 
 void userprog_init(void);
