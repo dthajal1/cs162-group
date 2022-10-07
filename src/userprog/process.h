@@ -43,6 +43,7 @@ struct process {
   /* Owned by process.c. */
   uint32_t* pagedir;          /* Page directory. */
   char process_name[16];      /* Name of the main thread */
+  struct fd_table* fd_table;  /* File Descriptor Table */
   struct thread* main_thread; /* Pointer to main thread */
 };
 

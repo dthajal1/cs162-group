@@ -12,6 +12,8 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 
+static validate_pointer(struct intr_frame* f, void* ptr);
+
 static void syscall_handler(struct intr_frame*);
 
 struct file* get_from_fd_table(int fd);
@@ -47,65 +49,41 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_PRACTICE) {
     f->eax = args[1] + 1;
     return;
-  } else if (syscall_num == SYS_WRITE) { /** FILE OPERATION SYSCALLS **/
-    int fd = args[1];
-    if (!is_pointer_valid((void*)args[2])) {
-      f->eax = -1;
-      return;
-    }
-    void* buf = (void*)args[2];
-    size_t size = args[3];
+  } else if (syscall_num == SYS_CREATE) { /** FILE OPERATION SYSCALLS **/
+    validate_pointer(f, args[1]);
 
-    if (fd == 1) { // STDOUT
-      putbuf(buf, size);
-      f->eax = size;
-    } else {
-      // file* file; // todo: get file from fdt
-      // off_t bytes_written = file_write(file, buf, size);
-      // f->eax = bytes_written;
-    }
-    return;
-  } else if (syscall_num == SYS_EXIT) {
-    f->eax = args[1];
-    printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
-    process_exit();
-  } else if (syscall_num == SYS_CREATE) {
-    if (!is_pointer_valid(args[1])) {
-      f->eax = -1;
-      return;
-    }
     char* file_name = args[1];
     off_t initial_size = args[2];
     lock_acquire(&file_lock);
     bool is_success = filesys_create(file_name, initial_size);
     lock_release(&file_lock);
     f->eax = is_success;
+    return;
   } else if (syscall_num == SYS_REMOVE) {
-    if (!is_pointer_valid(args[1])) {
-      f->eax = -1;
-      return;
-    }
+    validate_pointer(f, args[1]);
+
     char* file_name = args[1];
     lock_acquire(&file_lock);
     bool is_success = filesys_remove(file_name);
     lock_release(&file_lock);
     f->eax = is_success;
+    return;
   } else if (syscall_num == SYS_OPEN) {
-    if (!is_pointer_valid(args[1])) {
-      f->eax = -1;
-      return;
-    }
+    validate_pointer(f, args[1]);
+
     char* file_name = args[1];
     lock_acquire(&file_lock);
     struct file* file = filesys_open(file_name);
     lock_release(&file_lock);
     if (file == NULL) {
       f->eax = -1;
+      process_exit();
       return;
     }
 
     int new_fd = add_to_fd_table(file);
     f->eax = new_fd;
+    return;
   } else if (syscall_num == SYS_FILESIZE) {
     // args: int fd
     int fd = args[1];
@@ -118,12 +96,11 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     off_t size = file_length(file);
     lock_release(&file_lock);
     f->eax = size;
+    return;
   } else if (syscall_num == SYS_READ) {
     int fd = args[1];
-    if (!is_pointer_valid(args[2])) {
-      f->eax = -1;
-      return;
-    }
+    validate_pointer(f, args[2]);
+
     char* buffer = args[2];
     unsigned size = args[3];
 
@@ -141,13 +118,12 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       lock_release(&file_lock);
       f->eax = bytes_read;
     }
+    return;
   } else if (syscall_num == SYS_WRITE) {
     // args: int fd, const void* buffer, unsigned size
     int fd = args[1];
-    if (!is_pointer_valid(args[2])) {
-      f->eax = -1;
-      return;
-    }
+    validate_pointer(f, args[2]);
+
     char* buffer = args[2];
     unsigned size = args[3];
     if (fd == 1) { // write to console: STDOUT
@@ -164,6 +140,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       lock_release(&file_lock);
       f->eax = bytes_written;
     }
+    return;
   } else if (syscall_num == SYS_SEEK) {
     // args: int fd, unsigned position
     int fd = args[1];
@@ -175,6 +152,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       file_seek(file, position);
       lock_release(&file_lock);
     }
+    return;
   } else if (syscall_num == SYS_TELL) {
     // args: int fd
     int fd = args[1];
@@ -188,6 +166,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     off_t curr_pos = file_tell(file);
     lock_release(&file_lock);
     f->eax = curr_pos;
+    return;
   } else if (syscall_num == SYS_CLOSE) {
     // args: int fd
     int fd = args[1];
@@ -217,10 +196,10 @@ int add_to_fd_table(struct file* file) {
   struct fd_entry* new_entry = malloc(sizeof(struct fd_entry));
   if (new_entry != NULL) {
     new_entry->file = file;
-    new_entry->fd = t->fd_table->next_fd;
-    list_push_back(&(t->fd_table->fd_entries), &(new_entry->elem));
+    new_entry->fd = t->pcb->fd_table->next_fd;
+    list_push_back(&(t->pcb->fd_table->fd_entries), &(new_entry->elem));
 
-    t->fd_table->next_fd++; // increment next_fd to next available location
+    t->pcb->fd_table->next_fd++; // increment next_fd to next available location
 
     return new_entry->fd;
   }
@@ -236,8 +215,8 @@ struct file* get_from_fd_table(int fd) {
 
   struct list_elem* e;
 
-  for (e = list_begin(&(t->fd_table->fd_entries)); e != list_end(&(t->fd_table->fd_entries));
-       e = list_next(e)) {
+  for (e = list_begin(&(t->pcb->fd_table->fd_entries));
+       e != list_end(&(t->pcb->fd_table->fd_entries)); e = list_next(e)) {
     struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
     if (entry->fd == fd) {
       return entry->file;
@@ -255,8 +234,8 @@ void remove_from_fd_table(int fd) {
   struct fd_entry* entry_to_remove = NULL;
 
   struct list_elem* e;
-  for (e = list_begin(&(t->fd_table->fd_entries)); e != list_end(&(t->fd_table->fd_entries));
-       e = list_next(e)) {
+  for (e = list_begin(&(t->pcb->fd_table->fd_entries));
+       e != list_end(&(t->pcb->fd_table->fd_entries)); e = list_next(e)) {
     struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
     if (entry->fd == fd) {
       entry_to_remove = entry;
@@ -270,5 +249,13 @@ void remove_from_fd_table(int fd) {
     elm_to_remove->next->prev = elm_to_remove->prev;
 
     free(entry_to_remove);
+  }
+}
+
+static validate_pointer(struct intr_frame* f, void* ptr) {
+  if (!is_pointer_valid(ptr)) {
+    f->eax = -1;
+    printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+    process_exit();
   }
 }

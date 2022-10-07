@@ -42,15 +42,6 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
 
-  /* Initialize file descriptor table, its entries and next_fd. */
-  t->fd_table = (struct fd_table*)malloc(sizeof(struct fd_table));
-  if (t->fd_table == NULL) {
-    // err handling
-  } else {
-    list_init(&(t->fd_table->fd_entries));
-    t->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
-  }
-
   /* Initialize global file lock. */
   lock_init(&file_lock);
 
@@ -106,6 +97,15 @@ static void start_process(void* cmd_) {
     // does not try to activate our uninitialized pagedir
     new_pcb->pagedir = NULL;
     t->pcb = new_pcb;
+
+    /* Initialize file descriptor table, its entries and next_fd. */
+    t->pcb->fd_table = (struct fd_table*)malloc(sizeof(struct fd_table));
+    if (t->pcb->fd_table == NULL) {
+      // err handling
+    } else {
+      list_init(&(t->pcb->fd_table->fd_entries));
+      t->pcb->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
+    }
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
@@ -212,18 +212,18 @@ void process_exit(void) {
   /* If this thread does not have a FD_TABLE, don't worry. */
 
   // if fd_table exists, free it
-  if (cur->fd_table != NULL) {
+  if (cur->pcb->fd_table != NULL) {
     /* Close all open files and free the FD_TABLE of this process. */
     struct list_elem* e;
-    for (e = list_begin(&(cur->fd_table->fd_entries)); e != list_end(&(cur->fd_table->fd_entries));
-         e = list_next(e)) {
+    for (e = list_begin(&(cur->pcb->fd_table->fd_entries));
+         e != list_end(&(cur->pcb->fd_table->fd_entries)); e = list_next(e)) {
       struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
       file_close(entry->file);
       // TODO: free entry since we malloced it
     }
 
-    struct fd_table* fd_table_to_free = cur->fd_table;
-    cur->fd_table = NULL;
+    struct fd_table* fd_table_to_free = cur->pcb->fd_table;
+    cur->pcb->fd_table = NULL;
     free(fd_table_to_free);
   }
 
