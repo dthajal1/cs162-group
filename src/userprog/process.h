@@ -45,6 +45,7 @@ struct process {
   char process_name[16];      /* Name of the main thread */
   struct fd_table* fd_table;  /* File Descriptor Table */
   struct thread* main_thread; /* Pointer to main thread */
+  struct file* exec_file;     /* Exectuable File running this process */
 };
 
 void userprog_init(void);

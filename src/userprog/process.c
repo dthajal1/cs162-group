@@ -165,6 +165,14 @@ static void start_process(void* cmd_) {
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
   if (!success && pcb_success) {
+    // on failure to load executable file, allow write on them again
+    file_close(t->pcb->exec_file);
+
+    // free fd_table
+    struct fd_table* fd_tbl_to_free = t->pcb->fd_table;
+    t->pcb->fd_table = NULL;
+    free(fd_tbl_to_free);
+
     // Avoid race where PCB is freed before t->pcb is set to NULL
     // If this happens, then an unfortuantely timed timer interrupt
     // can try to activate the pagedir, but it is now freed memory
@@ -217,19 +225,22 @@ void process_exit(void) {
 
   /* Clean up fd_table of this process if it exists. */
   if (cur->pcb->fd_table != NULL) {
-    struct fd_table* fd_table_to_free = cur->pcb->fd_table;
+    struct fd_table* fd_tbl_to_free = cur->pcb->fd_table;
 
     struct list_elem* e;
-    for (e = list_begin(&(fd_table_to_free->fd_entries));
-         e != list_end(&(fd_table_to_free->fd_entries)); e = list_next(e)) {
+    for (e = list_begin(&(fd_tbl_to_free->fd_entries));
+         e != list_end(&(fd_tbl_to_free->fd_entries)); e = list_next(e)) {
       struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
       file_close(entry->file);
-      free(entry);
+      // free(entry); // cannot free inside the loop. e = list_next(e) relies on this entry
     }
 
     cur->pcb->fd_table = NULL;
-    free(fd_table_to_free);
+    free(fd_tbl_to_free);
   }
+
+  // Close excetuable file and set it to be modifiable
+  file_close(cur->pcb->exec_file);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -366,6 +377,9 @@ bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char*
     goto done;
   }
 
+  /* save exec_file so we can allow write on them when process exits or if load fails. */
+  t->pcb->exec_file = file;
+
   /* Running executables shouldn't be modified. */
   file_deny_write(file);
 
@@ -439,7 +453,10 @@ bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char*
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  // file_close(file); // want to move this to process_exit to support lazy loading
+  /* "because an operating system may load code pages from the file lazily, or may page 
+    out some code pages and reload them from the file later." -- 162 Pintos Doc */
+
   return success;
 }
 
