@@ -20,7 +20,7 @@ void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "
     (above PHYS_BASE). False otherwise. */
 static bool is_pointer_valid(void* ptr) {
   struct thread* t = thread_current();
-  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && !is_kernel_vaddr(ptr);
+  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL;
 }
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
@@ -47,16 +47,17 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_HALT) {
     shutdown_power_off();
   } else if (syscall_num == SYS_EXEC) {
-    char* cmd = (char*)args[1];
     // error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
-    if (!is_pointer_valid(cmd)) {
-      f->eax = -1;
-      return;
+    if (!is_pointer_valid((void*)args) || !is_pointer_valid((void*)(args + 1)) ||
+        !is_pointer_valid((void*)(args + 2)) || !is_pointer_valid((void*)(args + 3))) {
+      printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+      process_exit();
     }
+    char* cmd = (char*)args[1];
     int child_pid = process_execute(cmd);
     if (child_pid == -1) {
-      f->eax = -1;
-      return;
+      printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+      process_exit();
     }
     shared_status_t* shared = get_shared_struct(child_pid);
     f->eax = shared->exit_code;
@@ -71,7 +72,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     int fd = args[1];
     if (!is_pointer_valid((void*)args[2])) {
       f->eax = -1;
-      return;
+      printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+      process_exit();
     }
     void* buf = (void*)args[2];
     size_t size = args[3];
@@ -86,7 +88,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     return;
   } else { // syscall DNE
+    printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
     process_exit();
-    return;
   }
 }
