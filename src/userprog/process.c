@@ -81,7 +81,7 @@ static void start_process(void* cmd_) {
 
   struct thread* t = thread_current();
   struct intr_frame if_;
-  bool success, pcb_success;
+  bool success, pcb_success, fd_tbl_success;
 
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
@@ -101,8 +101,9 @@ static void start_process(void* cmd_) {
     /* Initialize file descriptor table, its entries and next_fd. */
     t->pcb->fd_table = (struct fd_table*)malloc(sizeof(struct fd_table));
     if (t->pcb->fd_table == NULL) {
-      // TODO: err handling
+      fd_tbl_success = false;
     } else {
+      fd_tbl_success = true;
       list_init(&(t->pcb->fd_table->fd_entries));
       t->pcb->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
     }
@@ -169,9 +170,11 @@ static void start_process(void* cmd_) {
     file_close(t->pcb->exec_file);
 
     // free fd_table
-    struct fd_table* fd_tbl_to_free = t->pcb->fd_table;
-    t->pcb->fd_table = NULL;
-    free(fd_tbl_to_free);
+    if (fd_tbl_success) {
+      struct fd_table* fd_tbl_to_free = t->pcb->fd_table;
+      t->pcb->fd_table = NULL;
+      free(fd_tbl_to_free);
+    }
 
     // Avoid race where PCB is freed before t->pcb is set to NULL
     // If this happens, then an unfortuantely timed timer interrupt
@@ -227,12 +230,11 @@ void process_exit(void) {
   if (cur->pcb->fd_table != NULL) {
     struct fd_table* fd_tbl_to_free = cur->pcb->fd_table;
 
-    struct list_elem* e;
-    for (e = list_begin(&(fd_tbl_to_free->fd_entries));
-         e != list_end(&(fd_tbl_to_free->fd_entries)); e = list_next(e)) {
+    while (!list_empty(&(fd_tbl_to_free->fd_entries))) {
+      struct list_elem* e = list_pop_front(&(fd_tbl_to_free->fd_entries));
       struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
       file_close(entry->file);
-      // free(entry); // cannot free inside the loop. e = list_next(e) relies on this entry
+      free(entry);
     }
 
     cur->pcb->fd_table = NULL;
