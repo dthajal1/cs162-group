@@ -18,6 +18,8 @@
 .func intr_entry
 intr_entry:
 	/* Save caller's registers. */
+   subl $108, %esp # decrease stack pointer by 108
+	fsave 0(%esp) # save stack pointer to memory
 	pushl %ds
 	pushl %es
 	pushl %fs
@@ -55,6 +57,8 @@ intr_exit:
 	popl %fs
 	popl %es
 	popl %ds
+   frstor 0(%esp) # restore stack pointer to memory
+	addl $108, %esp # increase stack pointer by 108
 
         /* Discard `struct intr_frame' vec_no, error_code,
            frame_pointer members. */
