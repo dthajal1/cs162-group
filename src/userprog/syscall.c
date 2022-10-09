@@ -76,7 +76,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     int child_pid = process_execute(cmd);
     if (child_pid == -1) {
       printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-      f->eax = -1;
       process_exit();
     }
     shared_status_t* shared = get_shared_struct(child_pid);
