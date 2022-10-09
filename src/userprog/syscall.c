@@ -18,9 +18,28 @@ void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "
 /* Returns true if PTR is not: a null pointer, a pointer to unmapped 
     virtual memory, or a pointer to kernel virtual address space 
     (above PHYS_BASE). False otherwise. */
+
+static bool is_string_valid(void* str) {
+  struct thread* t = thread_current();
+  int offset = 0;
+  while (pagedir_get_page(t->pcb->pagedir, str + offset) != NULL) {
+    if ((char)((char*)str + offset) == '\0') {
+      return true;
+    }
+    offset += 1;
+  }
+  return false;
+}
+
 static bool is_pointer_valid(void* ptr) {
   struct thread* t = thread_current();
-  return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL;
+  for (int offset = 0; offset < 4; offset++) {
+    if (ptr + offset == NULL || pagedir_get_page(t->pcb->pagedir, ptr + offset) == NULL) {
+      return false;
+    }
+  }
+  return true;
+  // return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && is_user_vaddr(ptr);
 }
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
@@ -49,7 +68,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_EXEC) {
     // error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
     if (!is_pointer_valid((void*)args) || !is_pointer_valid((void*)(args + 1)) ||
-        !is_pointer_valid((void*)(args + 2)) || !is_pointer_valid((void*)(args + 3))) {
+        !is_string_valid((void*)args[1])) {
       printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
       process_exit();
     }
@@ -57,6 +76,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     int child_pid = process_execute(cmd);
     if (child_pid == -1) {
       printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+      f->eax = -1;
       process_exit();
     }
     shared_status_t* shared = get_shared_struct(child_pid);
