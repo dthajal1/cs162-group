@@ -42,6 +42,9 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
 
+  /* Initialize global file lock. */
+  lock_init(&file_lock);
+
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 
@@ -138,7 +141,7 @@ static void start_process(void* arguments) {
 
   struct thread* t = thread_current();
   struct intr_frame if_;
-  bool success, pcb_success;
+  bool success, pcb_success, fd_tbl_success;
 
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
@@ -154,6 +157,16 @@ static void start_process(void* arguments) {
     // does not try to activate our uninitialized pagedir
     new_pcb->pagedir = NULL;
     t->pcb = new_pcb;
+
+    /* Initialize file descriptor table, its entries and next_fd. */
+    t->pcb->fd_table = (struct fd_table*)malloc(sizeof(struct fd_table));
+    if (t->pcb->fd_table == NULL) {
+      fd_tbl_success = false;
+    } else {
+      fd_tbl_success = true;
+      list_init(&(t->pcb->fd_table->fd_entries));
+      t->pcb->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
+    }
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
@@ -216,6 +229,16 @@ static void start_process(void* arguments) {
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
   if (!success && pcb_success) {
+    // on failure to load executable file, allow write on them again
+    file_close(t->pcb->exec_file);
+
+    // free fd_table
+    if (fd_tbl_success) {
+      struct fd_table* fd_tbl_to_free = t->pcb->fd_table;
+      t->pcb->fd_table = NULL;
+      free(fd_tbl_to_free);
+    }
+
     // Avoid race where PCB is freed before t->pcb is set to NULL
     // If this happens, then an unfortuantely timed timer interrupt
     // can try to activate the pagedir, but it is now freed memory
@@ -311,6 +334,24 @@ void process_exit(void) {
   shared->exited = true;
   sema_up(&shared->sema);
   decrement_ref_cnt(shared);
+
+  /* Clean up fd_table of this process if it exists. */
+  if (cur->pcb->fd_table != NULL) {
+    struct fd_table* fd_tbl_to_free = cur->pcb->fd_table;
+
+    while (!list_empty(&(fd_tbl_to_free->fd_entries))) {
+      struct list_elem* e = list_pop_front(&(fd_tbl_to_free->fd_entries));
+      struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
+      file_close(entry->file);
+      free(entry);
+    }
+
+    cur->pcb->fd_table = NULL;
+    free(fd_tbl_to_free);
+  }
+
+  // Close excetuable file and set it to be modifiable
+  file_close(cur->pcb->exec_file);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -447,6 +488,12 @@ bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[
     goto done;
   }
 
+  /* save exec_file so we can allow write on them when process exits or if load fails. */
+  t->pcb->exec_file = file;
+
+  /* Running executables shouldn't be modified. */
+  file_deny_write(file);
+
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
       memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 ||
@@ -517,7 +564,10 @@ bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  // file_close(file); // want to move this to process_exit to support lazy loading
+  /* "because an operating system may load code pages from the file lazily, or may page 
+    out some code pages and reload them from the file later." -- 162 Pintos Doc */
+
   return success;
 }
 
