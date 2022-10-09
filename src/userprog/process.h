@@ -17,6 +17,23 @@ typedef tid_t pid_t;
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
 
+/* Global lock for file operation syscalls. */
+struct lock file_lock;
+
+/* File Descriptor Table. */
+struct fd_table {
+  struct list fd_entries;
+  int next_fd; // next available fd in fd_table
+};
+
+/* File Descriptor Entry. It should be allocated on the heap and 
+  added to fd_table on every call to open(). */
+struct fd_entry {
+  struct list_elem elem; // doubly linked list functionality
+  int fd;
+  struct file* file;
+};
+
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
    PCB from the TCB. All TCBs in a process will have a pointer
@@ -26,7 +43,9 @@ struct process {
   /* Owned by process.c. */
   uint32_t* pagedir;          /* Page directory. */
   char process_name[16];      /* Name of the main thread */
+  struct fd_table* fd_table;  /* File Descriptor Table */
   struct thread* main_thread; /* Pointer to main thread */
+  struct file* exec_file;     /* Exectuable File running this process */
 };
 
 void userprog_init(void);
