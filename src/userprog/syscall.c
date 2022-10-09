@@ -34,14 +34,14 @@ static bool is_string_valid(void* str) {
   return false;
 }
 
-
 /* Returns true if PTR is not: a null pointer, a pointer to unmapped 
     virtual memory, or a pointer to kernel virtual address space 
     (above PHYS_BASE). False otherwise. */
 static bool is_pointer_valid(void* ptr) {
   struct thread* t = thread_current();
   for (int offset = 0; offset < 4; offset++) {
-    if (ptr + offset == NULL || pagedir_get_page(t->pcb->pagedir, ptr + offset) == NULL) {
+    if (ptr + offset == NULL || !is_user_vaddr(ptr + offset) ||
+        pagedir_get_page(t->pcb->pagedir, ptr + offset) == NULL) {
       return false;
     }
   }
@@ -52,11 +52,10 @@ int add_to_fd_table(struct file* file);
 struct file* get_from_fd_table(int fd);
 void remove_from_fd_table(int fd);
 
-static void validate_pointer(struct intr_frame* f, void* ptr) {
+static void validate_pointer(void* ptr) {
   if (!is_pointer_valid(ptr)) {
-    f->eax = -1;
     printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-    process_exit();
+    process_exit(0);
   }
 }
 
@@ -72,11 +71,12 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
   /* printf("System call number: %d\n", args[0]); */
 
+  validate_pointer(args);
   int syscall_num = args[0];
   if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
-    f->eax = args[1];
+    validate_pointer(args + 1);
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
-    process_exit();
+    process_exit(args[1]);
     return;
   } else if (syscall_num == SYS_PRACTICE) {
     f->eax = args[1] + 1;
@@ -84,30 +84,19 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_HALT) {
     shutdown_power_off();
   } else if (syscall_num == SYS_EXEC) {
-    // error-check that args[1] is a string located in valid user memory && the argument address is in valid user memory
-    if (!is_pointer_valid((void*)args) || !is_pointer_valid((void*)(args + 1)) ||
-        !is_string_valid((void*)args[1])) {
-      printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-      process_exit();
-    }
+    validate_pointer(args + 1);
+    validate_pointer((char*)args[1]);
     char* cmd = (char*)args[1];
     int child_pid = process_execute(cmd);
-    if (child_pid == -1) {
-      printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-      process_exit();
-    }
-    shared_status_t* shared = get_shared_struct(child_pid);
-    f->eax = shared->exit_code;
+    f->eax = child_pid;
     return;
   } else if (syscall_num == SYS_WAIT) {
-    // QUESTION: todo as per gradescope design doc rubric: Error-check that args[1] argument address is in valid user memory. BUT isn't args[1] just an int???
     int exit_code = process_wait(args[1]);
     f->eax = exit_code;
     return;
     /** FILE OPERATION SYSCALLS (below) **/
   } else if (syscall_num == SYS_CREATE) {
-    validate_pointer(f, (char*)args[1]);
-    
+    validate_pointer((char*)args[1]);
     char* file_name = (char*)args[1];
     off_t initial_size = args[2];
     lock_acquire(&file_lock);
@@ -116,7 +105,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_REMOVE) {
-    validate_pointer(f, (char*)args[1]);
+    validate_pointer((char*)args[1]);
 
     char* file_name = (char*)args[1];
     lock_acquire(&file_lock);
@@ -125,7 +114,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_OPEN) {
-    validate_pointer(f, (char*)args[1]);
+    validate_pointer((char*)args[1]);
 
     char* file_name = (char*)args[1];
     lock_acquire(&file_lock);
@@ -146,7 +135,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     if (file == NULL) {
       f->eax = -1;
       printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-      process_exit();
+      process_exit(0);
     }
     lock_acquire(&file_lock);
     off_t size = file_length(file);
@@ -155,7 +144,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_READ) {
     int fd = args[1];
-    validate_pointer(f, (char*)args[2]);
+    validate_pointer((char*)args[2]);
 
     char* buffer = (char*)args[2];
     unsigned size = args[3];
@@ -177,7 +166,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_WRITE) {
     // args: int fd, const void* buffer, unsigned size
     int fd = args[1];
-    validate_pointer(f, (char*)args[2]);
+    validate_pointer((char*)args[2]);
 
     char* buffer = (char*)args[2];
     unsigned size = args[3];
@@ -237,7 +226,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     lock_release(&file_lock);
   } else { // syscall DNE
     printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-    process_exit();
+    process_exit(0);
   }
 }
 

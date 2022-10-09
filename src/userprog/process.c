@@ -125,9 +125,9 @@ pid_t process_execute(char* cmd) {
   /* Set the shared's PID, then WAIT. Will end wait when loaded. */
   shared->child_pid = tid; // QUESTION11: IS TID == PID HERE LOL
   sema_down(&shared->sema);
-  if (shared->exit_code != 0) {
-    decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
-    return TID_ERROR;          // could not load cmd
+  if (shared->failed_load) {
+    // decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
+    return TID_ERROR; // could not load cmd
   }
   return tid;
 }
@@ -250,7 +250,7 @@ static void start_process(void* arguments) {
   /* Clean up. Exit on failure or jump to userspace */
   palloc_free_page(cmd);
   if (!success) {
-    shared->exit_code = -1;
+    shared->failed_load = true;
     decrement_ref_cnt(shared);
     sema_up(&shared->sema);
     sema_up(&temporary);
@@ -299,13 +299,10 @@ int process_wait(pid_t child_pid) {
   if (child_shared == NULL) {
     // could not find child from this parent
     return -1;
-  } else if (child_shared->exited) {
-    return child_shared->exit_code;
   } else if (child_shared->already_waiting) {
     // error if this process has already called process_wait on this child
     return -1;
   }
-
   child_shared->already_waiting = true;
   sema_down(&child_shared->sema);
   child_shared->already_waiting = false;
@@ -318,7 +315,7 @@ int process_wait(pid_t child_pid) {
 }
 
 /* Free the current process's resources. */
-void process_exit(void) {
+void process_exit(int exit_code) {
   struct thread* cur = thread_current();
   uint32_t* pd;
 
@@ -330,7 +327,7 @@ void process_exit(void) {
 
   /* Clean up shared thread scheduling logic, free shared if ref_cnt=0 */
   shared_status_t* shared = cur->pcb->my_shared_status;
-  shared->exit_code = 0;
+  shared->exit_code = exit_code;
   shared->exited = true;
   sema_up(&shared->sema);
   decrement_ref_cnt(shared);

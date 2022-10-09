@@ -26,6 +26,7 @@ typedef struct shared_status {
   int exit_code;
   bool exited;
   bool already_waiting; // Is this child already being waited on by parent?
+  bool failed_load;
 
   struct lock ref_lock;
   int ref_cnt;
@@ -66,14 +67,14 @@ struct process {
   struct list children_shared_structs; // List of my children shared struct
   shared_status_t* my_shared_status;   // Ptr to MY shared_status_t w/ my parent
 
-  struct file* exec_file;     /* Exectuable File running this process */
+  struct file* exec_file; /* Exectuable File running this process */
 };
 
 void userprog_init(void);
 
 pid_t process_execute(char* file_name);
 int process_wait(pid_t);
-void process_exit(void);
+void process_exit(int exit_code);
 void process_activate(void);
 
 shared_status_t* get_shared_struct(pid_t child_pid);
