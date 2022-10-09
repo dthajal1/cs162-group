@@ -23,7 +23,7 @@
 static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
-static bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]);
+static bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]);
 bool setup_thread(void (**eip)(void), void** esp);
 
 /* Initializes user programs in the system by ensuring the main
@@ -47,13 +47,47 @@ void userprog_init(void) {
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
+
+  list_init(&t->pcb->children_shared_structs);
+}
+
+struct new_thread_arg_struct {
+  char* cmd;
+  shared_status_t* shared;
+};
+
+/* Initialize a shared struct for this current process & the given child process. 
+@returns NULL if errored. */
+static shared_status_t* shared_struct_init(void) {
+  shared_status_t* shared = (shared_status_t*)malloc(sizeof(shared_status_t));
+  if (shared == NULL)
+    return NULL;
+  sema_init(&shared->sema, 0);
+  lock_init(&shared->ref_lock);
+  shared->exit_code = 0;
+  shared->exited = false;
+  shared->already_waiting = false;
+  shared->ref_cnt = 2; // ??? right? do we init as 2???
+
+  return shared;
+}
+
+/* Helper fxn to decrement ref cnt while acquiring lock. */
+static void decrement_ref_cnt(shared_status_t* shared) {
+  lock_acquire(&shared->ref_lock);
+  shared->ref_cnt--;
+  lock_release(&shared->ref_lock);
+  if (shared->ref_cnt == 0) { // If ref_cnt = 0, free shared struct
+    list_remove(&shared->shared_elem);
+    free(shared);
+  }
 }
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
-pid_t process_execute(const char* cmd) {
+pid_t process_execute(char* cmd) {
   char* cmd_copy;
   tid_t tid;
 
@@ -64,20 +98,46 @@ pid_t process_execute(const char* cmd) {
   if (cmd_copy == NULL)
     return TID_ERROR;
   strlcpy(cmd_copy, cmd, PGSIZE);
+  /* Make a copy of CMD.
+     To use for strtok LOL. */
+  char* cmd_copy2 = palloc_get_page(0);
+  if (cmd_copy2 == NULL)
+    return TID_ERROR;
+  strlcpy(cmd_copy2, cmd, PGSIZE);
+
   char* saveptr;
-  char* file_name = strtok_r(cmd, " ", &saveptr);
+  char* file_name = strtok_r(cmd_copy2, " ", &saveptr);
+
+  shared_status_t* shared = shared_struct_init();
+  list_push_back(&thread_current()->pcb->children_shared_structs, &shared->shared_elem);
+
+  struct new_thread_arg_struct args;
+  args.cmd = cmd_copy;
+  args.shared = shared;
 
   /* Create a new thread to execute CMD. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, cmd_copy);
-  if (tid == TID_ERROR)
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, &args);
+  if (tid == TID_ERROR) {
     palloc_free_page(cmd_copy);
+    decrement_ref_cnt(shared);
+  }
+
+  /* Set the shared's PID, then WAIT. Will end wait when loaded. */
+  shared->child_pid = tid; // QUESTION11: IS TID == PID HERE LOL
+  sema_down(&shared->sema);
+  if (shared->failed_load) {
+    // decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
+    return TID_ERROR; // could not load cmd
+  }
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* cmd_) {
-  char* cmd = (char*)cmd_;
+static void start_process(void* arguments) {
+  struct new_thread_arg_struct* args = (struct new_thread_arg_struct*)arguments;
+  char* cmd = args->cmd;
+  shared_status_t* shared = args->shared;
 
   struct thread* t = thread_current();
   struct intr_frame if_;
@@ -111,6 +171,9 @@ static void start_process(void* cmd_) {
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
     strlcpy(t->pcb->process_name, t->name, sizeof t->name);
+
+    list_init(&t->pcb->children_shared_structs);
+    t->pcb->my_shared_status = shared;
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -187,9 +250,15 @@ static void start_process(void* cmd_) {
   /* Clean up. Exit on failure or jump to userspace */
   palloc_free_page(cmd);
   if (!success) {
+    shared->failed_load = true;
+    decrement_ref_cnt(shared);
+    sema_up(&shared->sema);
     sema_up(&temporary);
     thread_exit();
   }
+
+  /* End process_execute's waiting before jumping to userspace. */
+  sema_up(&shared->sema);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -201,6 +270,21 @@ static void start_process(void* cmd_) {
   NOT_REACHED();
 }
 
+/* Helper func to get the shared struct from a child pid. 
+Returns NULL if DNE. */
+shared_status_t* get_shared_struct(pid_t child_pid) {
+  struct list* children = &thread_current()->pcb->children_shared_structs;
+  // get matching child shared struct via children list of shared structs
+  struct list_elem* e;
+  for (e = list_begin(children); e != list_end(children); e = list_next(e)) {
+    shared_status_t* shared = list_entry(e, shared_status_t, shared_elem);
+    if (shared->child_pid == child_pid)
+      return shared;
+  }
+
+  return NULL;
+}
+
 /* Waits for process with PID child_pid to die and returns its exit status.
    If it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If child_pid is invalid or if it was not a
@@ -210,13 +294,28 @@ static void start_process(void* cmd_) {
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(pid_t child_pid UNUSED) {
-  sema_down(&temporary);
-  return 0;
+int process_wait(pid_t child_pid) {
+  shared_status_t* child_shared = get_shared_struct(child_pid);
+  if (child_shared == NULL) {
+    // could not find child from this parent
+    return -1;
+  } else if (child_shared->already_waiting) {
+    // error if this process has already called process_wait on this child
+    return -1;
+  }
+  child_shared->already_waiting = true;
+  sema_down(&child_shared->sema);
+  child_shared->already_waiting = false;
+  int exit_code = child_shared->exit_code;
+
+  decrement_ref_cnt(child_shared);
+
+  return exit_code;
+  // return 0;
 }
 
 /* Free the current process's resources. */
-void process_exit(void) {
+void process_exit(int exit_code) {
   struct thread* cur = thread_current();
   uint32_t* pd;
 
@@ -225,6 +324,13 @@ void process_exit(void) {
     thread_exit();
     NOT_REACHED();
   }
+
+  /* Clean up shared thread scheduling logic, free shared if ref_cnt=0 */
+  shared_status_t* shared = cur->pcb->my_shared_status;
+  shared->exit_code = exit_code;
+  shared->exited = true;
+  sema_up(&shared->sema);
+  decrement_ref_cnt(shared);
 
   /* Clean up fd_table of this process if it exists. */
   if (cur->pcb->fd_table != NULL) {
@@ -358,7 +464,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool load(const char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]) {
+bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]) {
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;

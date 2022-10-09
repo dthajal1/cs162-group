@@ -80,7 +80,7 @@ static void kill(struct intr_frame* f) {
       // Print exit code
       printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
       intr_dump_frame(f);
-      process_exit();
+      process_exit(0);
       NOT_REACHED();
 
     case SEL_KCSEG:
