@@ -21,22 +21,6 @@ void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "
 /* Returns true if PTR is not: a null pointer, a pointer to unmapped 
     virtual memory, or a pointer to kernel virtual address space 
     (above PHYS_BASE). False otherwise. */
-
-static bool is_string_valid(void* str) {
-  struct thread* t = thread_current();
-  int offset = 0;
-  while (pagedir_get_page(t->pcb->pagedir, str + offset) != NULL) {
-    if ((char)((char*)str + offset) == '\0') {
-      return true;
-    }
-    offset += 1;
-  }
-  return false;
-}
-
-/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
-    virtual memory, or a pointer to kernel virtual address space 
-    (above PHYS_BASE). False otherwise. */
 static bool is_pointer_valid(void* ptr) {
   struct thread* t = thread_current();
   for (int offset = 0; offset < 4; offset++) {
@@ -55,7 +39,13 @@ void remove_from_fd_table(int fd);
 static void validate_pointer(void* ptr) {
   if (!is_pointer_valid(ptr)) {
     printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-    process_exit(0);
+    process_exit(-1);
+  }
+}
+
+static void validate_args(uint32_t* args, int arg_count) {
+  for (int offset = 0; offset < arg_count; offset++) {
+    validate_pointer(args + offset);
   }
 }
 
@@ -74,7 +64,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   validate_pointer(args);
   int syscall_num = args[0];
   if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
-    validate_pointer(args + 1);
+    validate_args(args, 2);
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit(args[1]);
     return;
@@ -85,18 +75,20 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_HALT) {
     shutdown_power_off();
   } else if (syscall_num == SYS_EXEC) {
-    validate_pointer(args + 1);
+    validate_args(args, 2);
     validate_pointer((char*)args[1]);
     char* cmd = (char*)args[1];
     int child_pid = process_execute(cmd);
     f->eax = child_pid;
     return;
   } else if (syscall_num == SYS_WAIT) {
+    validate_args(args, 2);
     int exit_code = process_wait(args[1]);
     f->eax = exit_code;
     return;
     /** FILE OPERATION SYSCALLS (below) **/
   } else if (syscall_num == SYS_CREATE) {
+    validate_args(args, 3);
     validate_pointer((char*)args[1]);
     char* file_name = (char*)args[1];
     off_t initial_size = args[2];
@@ -106,6 +98,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_REMOVE) {
+    validate_args(args, 2);
     validate_pointer((char*)args[1]);
 
     char* file_name = (char*)args[1];
@@ -115,6 +108,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_OPEN) {
+    validate_args(args, 2);
     validate_pointer((char*)args[1]);
 
     char* file_name = (char*)args[1];
@@ -131,6 +125,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_FILESIZE) {
     // args: int fd
+    validate_args(args, 2);
     int fd = args[1];
     struct file* file = get_from_fd_table(fd);
     if (file == NULL) {
@@ -144,8 +139,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = size;
     return;
   } else if (syscall_num == SYS_READ) {
+    validate_args(args, 4);
+    validate_pointer(args[2]);
     int fd = args[1];
-    validate_pointer((char*)args[2]);
 
     char* buffer = (char*)args[2];
     unsigned size = args[3];
@@ -166,9 +162,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_WRITE) {
     // args: int fd, const void* buffer, unsigned size
-    int fd = args[1];
-    validate_pointer((char*)args[2]);
+    validate_args(args, 4);
+    validate_pointer(args[2]);
 
+    int fd = args[1];
     char* buffer = (char*)args[2];
     unsigned size = args[3];
     if (fd == 1) { // write to console: STDOUT
@@ -188,6 +185,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_SEEK) {
     // args: int fd, unsigned position
+    validate_args(args, 3);
     int fd = args[1];
     unsigned position = args[2];
 
@@ -200,6 +198,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_TELL) {
     // args: int fd
+    validate_args(args, 2);
     int fd = args[1];
 
     struct file* file = get_from_fd_table(fd);
@@ -214,6 +213,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_CLOSE) {
     // args: int fd
+    validate_args(args, 2);
     int fd = args[1];
 
     struct file* file = get_from_fd_table(fd);
