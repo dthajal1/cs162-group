@@ -116,7 +116,6 @@ static void start_process(void* cmd_) {
   /* Initialize interrupt frame and load executable. */
   if (success) {
     memset(&if_, 0, sizeof if_);
-    // asm volatile("finit; fsave (%0);" : : "g"(&if_.fpu_registers) : "memory");
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;

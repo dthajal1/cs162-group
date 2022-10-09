@@ -23,6 +23,7 @@ switch_threads:
 	#
 	# This stack frame must match the one set up by thread_create()
 	# in size.
+	fninit
 	pushl %ebx
 	pushl %ebp
 	pushl %esi

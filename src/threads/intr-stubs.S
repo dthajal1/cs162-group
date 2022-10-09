@@ -18,6 +18,7 @@
 .func intr_entry
 intr_entry:
 	/* Save caller's registers. */
+   fninit
    subl $108, %esp # decrease stack pointer by 108
 	fsave 0(%esp) # save stack pointer to memory
 	pushl %ds
@@ -52,6 +53,7 @@ intr_entry:
 .func intr_exit
 intr_exit:
 	/* Restore caller's registers. */
+   fninit
 	popal
 	popl %gs
 	popl %fs
