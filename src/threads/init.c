@@ -77,11 +77,6 @@ static void locate_block_device(enum block_type, const char* name);
 int main(void) {
   char** argv;
 
-  /* Initialize FPU */
-  // asm volatile("finit;" : : : "memory");
-  uint8_t new_fpu[108];
-  asm volatile("finit; fsave (%0);" : : "g"(&new_fpu) : "memory");
-
   /* Clear BSS. */
   bss_init();
 
@@ -134,6 +129,7 @@ int main(void) {
   locate_block_devices();
   filesys_init(format_filesys);
 #endif
+  asm volatile("fninit;" : : : "memory");
 
   printf("Boot complete.\n");
 

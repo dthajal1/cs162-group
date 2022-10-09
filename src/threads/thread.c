@@ -208,7 +208,7 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
 
   uint8_t curr_fpu[108];
   asm volatile("fsave (%0);" : : "g"(&curr_fpu));
-  asm volatile("finit; fsave (%0);" : : "g"(&sf->fpu_registers) : "memory");
+  asm volatile("fninit; fsave (%0);" : : "g"(&sf->fpu_registers) : "memory");
 
   /* Add to run queue. */
   thread_unblock(t);
