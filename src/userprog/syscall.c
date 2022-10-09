@@ -1,3 +1,4 @@
+#include "devices/shutdown.h"
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,11 +18,46 @@ static void syscall_handler(struct intr_frame*);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+    virtual memory, or a pointer to kernel virtual address space 
+    (above PHYS_BASE). False otherwise. */
+
+static bool is_string_valid(void* str) {
+  struct thread* t = thread_current();
+  int offset = 0;
+  while (pagedir_get_page(t->pcb->pagedir, str + offset) != NULL) {
+    if ((char)((char*)str + offset) == '\0') {
+      return true;
+    }
+    offset += 1;
+  }
+  return false;
+}
+
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+    virtual memory, or a pointer to kernel virtual address space 
+    (above PHYS_BASE). False otherwise. */
+static bool is_pointer_valid(void* ptr) {
+  struct thread* t = thread_current();
+  for (int offset = 0; offset < 4; offset++) {
+    if (ptr + offset == NULL || !is_user_vaddr(ptr + offset) ||
+        pagedir_get_page(t->pcb->pagedir, ptr + offset) == NULL) {
+      return false;
+    }
+  }
+  return true;
+  // return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && is_user_vaddr(ptr);
+}
 int add_to_fd_table(struct file* file);
 struct file* get_from_fd_table(int fd);
 void remove_from_fd_table(int fd);
-static bool is_pointer_valid(void* ptr);
-static void validate_pointer(struct intr_frame* f, void* ptr);
+
+static void validate_pointer(void* ptr) {
+  if (!is_pointer_valid(ptr)) {
+    printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+    process_exit(0);
+  }
+}
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
   uint32_t* args = ((uint32_t*)f->esp);
@@ -35,18 +71,33 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
   /* printf("System call number: %d\n", args[0]); */
 
+  validate_pointer(args);
   int syscall_num = args[0];
   if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
-    f->eax = args[1];
+    validate_pointer(args + 1);
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
-    process_exit();
+    process_exit(args[1]);
     return;
   } else if (syscall_num == SYS_PRACTICE) {
-    f->eax = args[1] + 1;
+    f->eax = args[1];
+    // f->eax = args[1] + 1;
     return;
-  } else if (syscall_num == SYS_CREATE) { /** FILE OPERATION SYSCALLS **/
-    validate_pointer(f, (char*)args[1]);
-
+  } else if (syscall_num == SYS_HALT) {
+    shutdown_power_off();
+  } else if (syscall_num == SYS_EXEC) {
+    validate_pointer(args + 1);
+    validate_pointer((char*)args[1]);
+    char* cmd = (char*)args[1];
+    int child_pid = process_execute(cmd);
+    f->eax = child_pid;
+    return;
+  } else if (syscall_num == SYS_WAIT) {
+    int exit_code = process_wait(args[1]);
+    f->eax = exit_code;
+    return;
+    /** FILE OPERATION SYSCALLS (below) **/
+  } else if (syscall_num == SYS_CREATE) {
+    validate_pointer((char*)args[1]);
     char* file_name = (char*)args[1];
     off_t initial_size = args[2];
     lock_acquire(&file_lock);
@@ -55,7 +106,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_REMOVE) {
-    validate_pointer(f, (char*)args[1]);
+    validate_pointer((char*)args[1]);
 
     char* file_name = (char*)args[1];
     lock_acquire(&file_lock);
@@ -64,7 +115,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = is_success;
     return;
   } else if (syscall_num == SYS_OPEN) {
-    validate_pointer(f, (char*)args[1]);
+    validate_pointer((char*)args[1]);
 
     char* file_name = (char*)args[1];
     lock_acquire(&file_lock);
@@ -84,7 +135,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     struct file* file = get_from_fd_table(fd);
     if (file == NULL) {
       f->eax = -1;
-      return;
+      printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+      process_exit(0);
     }
     lock_acquire(&file_lock);
     off_t size = file_length(file);
@@ -93,7 +145,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     return;
   } else if (syscall_num == SYS_READ) {
     int fd = args[1];
-    validate_pointer(f, (char*)args[2]);
+    validate_pointer((char*)args[2]);
 
     char* buffer = (char*)args[2];
     unsigned size = args[3];
@@ -115,7 +167,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (syscall_num == SYS_WRITE) {
     // args: int fd, const void* buffer, unsigned size
     int fd = args[1];
-    validate_pointer(f, (char*)args[2]);
+    validate_pointer((char*)args[2]);
 
     char* buffer = (char*)args[2];
     unsigned size = args[3];
@@ -174,8 +226,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     file_close(file);
     lock_release(&file_lock);
   } else { // syscall DNE
-    process_exit();
-    return;
+    printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+    process_exit(0);
   }
 }
 
@@ -242,21 +294,5 @@ void remove_from_fd_table(int fd) {
     elm_to_remove->next->prev = elm_to_remove->prev;
 
     free(entry_to_remove);
-  }
-}
-
-/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
-    virtual memory, or a pointer to kernel virtual address space 
-    (above PHYS_BASE). False otherwise. */
-static bool is_pointer_valid(void* ptr) {
-  struct thread* t = thread_current();
-  return ptr != NULL && !is_kernel_vaddr(ptr) && pagedir_get_page(t->pcb->pagedir, ptr) != NULL;
-}
-
-static void validate_pointer(struct intr_frame* f, void* ptr) {
-  if (!is_pointer_valid(ptr)) {
-    f->eax = -1;
-    printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-    process_exit();
   }
 }
