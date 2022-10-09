@@ -150,8 +150,6 @@ start:
 	orl $CR0_PE | CR0_PG | CR0_WP, %eax
 	movl %eax, %cr0
 
-# initialize fpu
-	fninit
 # We're now in protected mode in a 16-bit segment.  The CPU still has
 # the real-mode code segment cached in %cs's segment descriptor.  We
 # need to reload %cs, and the easiest way is to use a far jump.
