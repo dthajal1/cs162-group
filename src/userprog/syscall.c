@@ -30,7 +30,6 @@ static bool is_pointer_valid(void* ptr) {
     }
   }
   return true;
-  // return ptr != NULL && pagedir_get_page(t->pcb->pagedir, ptr) != NULL && is_user_vaddr(ptr);
 }
 int add_to_fd_table(struct file* file);
 struct file* get_from_fd_table(int fd);
@@ -130,7 +129,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = new_fd;
     return;
   } else if (syscall_num == SYS_FILESIZE) {
-    // args: int fd
     validate_args(args, 2);
     int fd = args[1];
     struct file* file = get_from_fd_table(fd);
@@ -152,8 +150,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     char* buffer = (char*)args[2];
     unsigned size = args[3];
 
-    if (fd == 0) {  // read from STDIN_FILENO
-      input_getc(); // TODO: make sure this handles everything
+    if (fd == 0) { // read from STDIN_FILENO
+      input_getc();
     } else {
       struct file* file = get_from_fd_table(fd);
       if (file == NULL) {
@@ -167,7 +165,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     return;
   } else if (syscall_num == SYS_WRITE) {
-    // args: int fd, const void* buffer, unsigned size
     validate_args(args, 4);
     validate_pointer(args[2]);
 
@@ -190,7 +187,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     return;
   } else if (syscall_num == SYS_SEEK) {
-    // args: int fd, unsigned position
     validate_args(args, 3);
     int fd = args[1];
     unsigned position = args[2];
@@ -203,7 +199,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     return;
   } else if (syscall_num == SYS_TELL) {
-    // args: int fd
     validate_args(args, 2);
     int fd = args[1];
 
@@ -218,7 +213,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = curr_pos;
     return;
   } else if (syscall_num == SYS_CLOSE) {
-    // args: int fd
     validate_args(args, 2);
     int fd = args[1];
 

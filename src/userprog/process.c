@@ -130,8 +130,8 @@ pid_t process_execute(char* cmd) {
   /* Set the shared's PID, then WAIT. Will end wait when loaded. */
   shared->child_pid = tid;
   sema_down(&shared->sema);
-  if (shared->failed_load) {
-    return TID_ERROR; // could not load cmd
+  if (shared->failed_load) { // could not load cmd
+    return TID_ERROR;
   }
   return tid;
 }
@@ -278,7 +278,6 @@ static void start_process(void* arguments) {
 Returns NULL if DNE. */
 shared_status_t* get_shared_struct(pid_t child_pid) {
   struct list* children = &thread_current()->pcb->children_shared_structs;
-  // get matching child shared struct via children list of shared structs
   struct list_elem* e;
   for (e = list_begin(children); e != list_end(children); e = list_next(e)) {
     shared_status_t* shared = list_entry(e, shared_status_t, shared_elem);
