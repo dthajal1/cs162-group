@@ -99,11 +99,16 @@ pid_t process_execute(char* cmd) {
     return TID_ERROR;
   strlcpy(cmd_copy, cmd, PGSIZE);
   /* Make a copy of CMD.
-     To use for strtok LOL. */
+     To use for strtok */
   char* cmd_copy2 = palloc_get_page(0);
   if (cmd_copy2 == NULL)
     return TID_ERROR;
   strlcpy(cmd_copy2, cmd, PGSIZE);
+
+  /* Check for if cmd is empty */
+  if (strcmp(cmd, "") == 0 || cmd == NULL) {
+    return TID_ERROR;
+  }
 
   char* saveptr;
   char* file_name = strtok_r(cmd_copy2, " ", &saveptr);
@@ -123,11 +128,10 @@ pid_t process_execute(char* cmd) {
   }
 
   /* Set the shared's PID, then WAIT. Will end wait when loaded. */
-  shared->child_pid = tid; // QUESTION11: IS TID == PID HERE LOL
+  shared->child_pid = tid;
   sema_down(&shared->sema);
-  if (shared->failed_load) {
-    // decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
-    return TID_ERROR; // could not load cmd
+  if (shared->failed_load) { // could not load cmd
+    return TID_ERROR;
   }
   return tid;
 }
@@ -146,10 +150,6 @@ static void start_process(void* arguments) {
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
-
-  if (strcmp(cmd, "") == 0 || cmd == NULL) {
-    success = false;
-  }
 
   /* Initialize process control block */
   if (success) {
@@ -278,7 +278,6 @@ static void start_process(void* arguments) {
 Returns NULL if DNE. */
 shared_status_t* get_shared_struct(pid_t child_pid) {
   struct list* children = &thread_current()->pcb->children_shared_structs;
-  // get matching child shared struct via children list of shared structs
   struct list_elem* e;
   for (e = list_begin(children); e != list_end(children); e = list_next(e)) {
     shared_status_t* shared = list_entry(e, shared_status_t, shared_elem);
@@ -315,7 +314,6 @@ int process_wait(pid_t child_pid) {
   decrement_ref_cnt(child_shared);
 
   return exit_code;
-  // return 0;
 }
 
 /* Free the current process's resources. */
