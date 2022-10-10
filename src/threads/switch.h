@@ -32,7 +32,7 @@ void switch_thunk(void);
 #endif
 
 /* Offsets used by switch.S. */
-#define SWITCH_CUR 128  // 20
-#define SWITCH_NEXT 132 // 24
+#define SWITCH_CUR 128  // 128  // 20
+#define SWITCH_NEXT 132 // 132 // 24
 
 #endif /* threads/switch.h */

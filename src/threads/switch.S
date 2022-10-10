@@ -24,12 +24,12 @@ switch_threads:
 	# This stack frame must match the one set up by thread_create()
 	# in size.
 	fninit
+	subl $108, %esp # decrease stack pointer by 108
+	fsave 0(%esp) # save stack pointer to memory
 	pushl %ebx
 	pushl %ebp
 	pushl %esi
 	pushl %edi
-	subl $108, %esp # decrease stack pointer by 108
-	fsave 0(%esp) # save stack pointer to memory
 
 	# Get offsetof (struct thread, stack).
 .globl thread_stack_ofs
@@ -44,13 +44,13 @@ switch_threads:
 	movl (%ecx,%edx,1), %esp
 
 	# Restore caller's register state.
-	frstor 0(%esp) # restore stack pointer to memory
-	addl $108, %esp # increase stack pointer by 108
 	popl %edi
 	popl %esi
 	popl %ebp
 	popl %ebx
-        ret
+	frstor 0(%esp) # restore stack pointer to memory
+	addl $108, %esp # increase stack pointer by 108
+    ret
 .endfunc
 
 .globl switch_entry
