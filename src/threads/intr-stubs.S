@@ -23,7 +23,6 @@ intr_entry:
 	pushl %fs
 	pushl %gs
 	pushal
-   fninit
    subl $108, %esp # decrease stack pointer by 108
 	fsave 0(%esp) # save stack pointer to memory
 
@@ -53,7 +52,6 @@ intr_entry:
 .func intr_exit
 intr_exit:
 	/* Restore caller's registers. */
-   fninit
    frstor 0(%esp) # restore stack pointer to memory
 	addl $108, %esp # increase stack pointer by 108
 	popal

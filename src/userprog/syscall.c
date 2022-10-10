@@ -76,8 +76,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     return;
   } else if (syscall_num == SYS_PRACTICE) {
-    f->eax = args[1];
-    // f->eax = args[1] + 1;
+    f->eax = args[1] + 1;
     return;
   } else if (syscall_num == SYS_HALT) {
     shutdown_power_off();

@@ -129,7 +129,7 @@ int main(void) {
   locate_block_devices();
   filesys_init(format_filesys);
 #endif
-  asm volatile("fninit;" : : : "memory");
+  asm("fninit");
 
   printf("Boot complete.\n");
 

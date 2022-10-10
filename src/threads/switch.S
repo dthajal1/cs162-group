@@ -27,7 +27,6 @@ switch_threads:
 	pushl %ebp
 	pushl %esi
 	pushl %edi
-	fninit
 	subl $108, %esp # decrease stack pointer by 108
 	fsave 0(%esp) # save stack pointer to memory
 
