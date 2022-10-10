@@ -150,6 +150,7 @@ tests/userprog/close-normal_PUTFILES += tests/userprog/sample.txt
 tests/userprog/close-twice_PUTFILES += tests/userprog/sample.txt
 tests/userprog/read-normal_PUTFILES += tests/userprog/sample.txt
 tests/userprog/read-bad-ptr_PUTFILES += tests/userprog/sample.txt
+tests/userprog/read-null-ptr_PUTFILES += tests/userprog/sample.txt
 tests/userprog/read-boundary_PUTFILES += tests/userprog/sample.txt
 tests/userprog/read-zero_PUTFILES += tests/userprog/sample.txt
 tests/userprog/write-normal_PUTFILES += tests/userprog/sample.txt
