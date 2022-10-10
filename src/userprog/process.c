@@ -183,6 +183,10 @@ static void start_process(void* arguments) {
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
 
+    uint8_t curr_fpu[108];
+    asm volatile("fsave (%0); fninit; fsave (%1)" : : "g"(&curr_fpu), "g"(&if_.fpu_registers));
+    asm volatile("frstor (%0)" : : "g"(&curr_fpu));
+
     // Parse thru file_name
     int argc = 0;
     size_t argv_size = 2; // Init to default size of 2
