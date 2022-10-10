@@ -67,7 +67,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     validate_args(args, 2);
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     process_exit(args[1]);
-    ;
+    return;
   } else if (args[0] == SYS_COMPUTE_E) {
     int n = (int)args[1];
     if (n >= 0) {
