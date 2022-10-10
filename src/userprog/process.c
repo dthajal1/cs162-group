@@ -314,7 +314,6 @@ int process_wait(pid_t child_pid) {
   decrement_ref_cnt(child_shared);
 
   return exit_code;
-  // return 0;
 }
 
 /* Free the current process's resources. */

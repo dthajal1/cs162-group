@@ -91,7 +91,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     int exit_code = process_wait(args[1]);
     f->eax = exit_code;
     return;
-    /** FILE OPERATION SYSCALLS (below) **/
   } else if (syscall_num == SYS_CREATE) {
     validate_args(args, 3);
     validate_pointer((char*)args[1]);
@@ -226,7 +225,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     file_close(file);
     lock_release(&file_lock);
   } else { // syscall DNE
-    printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+    printf("%s: exit(0)\n", thread_current()->pcb->process_name);
     process_exit(0);
   }
 }
