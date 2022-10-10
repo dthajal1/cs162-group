@@ -99,11 +99,16 @@ pid_t process_execute(char* cmd) {
     return TID_ERROR;
   strlcpy(cmd_copy, cmd, PGSIZE);
   /* Make a copy of CMD.
-     To use for strtok LOL. */
+     To use for strtok */
   char* cmd_copy2 = palloc_get_page(0);
   if (cmd_copy2 == NULL)
     return TID_ERROR;
   strlcpy(cmd_copy2, cmd, PGSIZE);
+
+  /* Check for if cmd is empty */
+  if (strcmp(cmd, "") == 0 || cmd == NULL) {
+    return TID_ERROR;
+  }
 
   char* saveptr;
   char* file_name = strtok_r(cmd_copy2, " ", &saveptr);
@@ -123,10 +128,9 @@ pid_t process_execute(char* cmd) {
   }
 
   /* Set the shared's PID, then WAIT. Will end wait when loaded. */
-  shared->child_pid = tid; // QUESTION11: IS TID == PID HERE LOL
+  shared->child_pid = tid;
   sema_down(&shared->sema);
   if (shared->failed_load) {
-    // decrement_ref_cnt(shared); // SHOLD WE DECREMENT REF CNT IF FAILED?
     return TID_ERROR; // could not load cmd
   }
   return tid;
@@ -146,10 +150,6 @@ static void start_process(void* arguments) {
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
-
-  if (strcmp(cmd, "") == 0 || cmd == NULL) {
-    success = false;
-  }
 
   /* Initialize process control block */
   if (success) {
