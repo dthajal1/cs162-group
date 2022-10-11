@@ -67,7 +67,7 @@ static shared_status_t* shared_struct_init(void) {
   shared->exit_code = 0;
   shared->exited = false;
   shared->already_waiting = false;
-  shared->ref_cnt = 2; // ??? right? do we init as 2???
+  shared->ref_cnt = 2;
 
   return shared;
 }
@@ -77,7 +77,7 @@ static void decrement_ref_cnt(shared_status_t* shared) {
   lock_acquire(&shared->ref_lock);
   shared->ref_cnt--;
   lock_release(&shared->ref_lock);
-  if (shared->ref_cnt == 0) { // If ref_cnt = 0, free shared struct
+  if (shared->ref_cnt == 0) {
     list_remove(&shared->shared_elem);
     free(shared);
   }
@@ -130,7 +130,7 @@ pid_t process_execute(char* cmd) {
   /* Set the shared's PID, then WAIT. Will end wait when loaded. */
   shared->child_pid = tid;
   sema_down(&shared->sema);
-  if (shared->failed_load) { // could not load cmd
+  if (shared->failed_load) {
     return TID_ERROR;
   }
   return tid;
@@ -165,7 +165,7 @@ static void start_process(void* arguments) {
     } else {
       fd_tbl_success = true;
       list_init(&(t->pcb->fd_table->fd_entries));
-      t->pcb->fd_table->next_fd = 3; // 0, 1, 2 reserved for Standard FDs
+      t->pcb->fd_table->next_fd = 3;
     }
 
     // Continue initializing the PCB as normal
@@ -189,7 +189,7 @@ static void start_process(void* arguments) {
 
     // Parse thru file_name
     int argc = 0;
-    size_t argv_size = 2; // Init to default size of 2
+    size_t argv_size = 2;
     char** argv = (char**)malloc(argv_size * sizeof(char*));
     char** temp;
     if (argv == NULL) {
@@ -687,9 +687,7 @@ static bool setup_stack(void** esp, int argc, char* argv[]) {
       // [0...argc-1] for args' addresses
       // [argc] for NULL ptr
       // [argc+1] for address of argv itself
-      char** addresses = (char**)malloc(
-          (argc + 2) *
-          sizeof(char*)); // one extra space for null at the end, one extra for beginning of argv
+      char** addresses = (char**)malloc((argc + 2) * sizeof(char*));
       addresses[argc] = NULL;
       for (int i = argc - 1; i >= 0; i--) {
         *stack_ptr -= (strlen(argv[i]) + 1);
