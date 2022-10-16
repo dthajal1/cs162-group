@@ -23,7 +23,7 @@
 static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
-static bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]);
+static bool load(const char* file_name, void (**eip)(void), void** esp);
 bool setup_thread(void (**eip)(void), void** esp);
 
 /* Initializes user programs in the system by ensuring the main
@@ -42,110 +42,40 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
 
-  /* Initialize global file lock. */
-  lock_init(&file_lock);
-
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
-
-  list_init(&t->pcb->children_shared_structs);
-}
-
-struct new_thread_arg_struct {
-  char* cmd;
-  shared_status_t* shared;
-};
-
-/* Initialize a shared struct for this current process & the given child process. 
-@returns NULL if errored. */
-static shared_status_t* shared_struct_init(void) {
-  shared_status_t* shared = (shared_status_t*)malloc(sizeof(shared_status_t));
-  if (shared == NULL)
-    return NULL;
-  sema_init(&shared->sema, 0);
-  lock_init(&shared->ref_lock);
-  shared->exit_code = 0;
-  shared->exited = false;
-  shared->already_waiting = false;
-  shared->ref_cnt = 2;
-
-  return shared;
-}
-
-/* Helper fxn to decrement ref cnt while acquiring lock. */
-static void decrement_ref_cnt(shared_status_t* shared) {
-  lock_acquire(&shared->ref_lock);
-  shared->ref_cnt--;
-  lock_release(&shared->ref_lock);
-  if (shared->ref_cnt == 0) {
-    list_remove(&shared->shared_elem);
-    free(shared);
-  }
 }
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
-pid_t process_execute(char* cmd) {
-  char* cmd_copy;
+pid_t process_execute(const char* file_name) {
+  char* fn_copy;
   tid_t tid;
 
   sema_init(&temporary, 0);
-  /* Make a copy of CMD.
+  /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  cmd_copy = palloc_get_page(0);
-  if (cmd_copy == NULL)
+  fn_copy = palloc_get_page(0);
+  if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy(cmd_copy, cmd, PGSIZE);
-  /* Make a copy of CMD.
-     To use for strtok */
-  char* cmd_copy2 = palloc_get_page(0);
-  if (cmd_copy2 == NULL)
-    return TID_ERROR;
-  strlcpy(cmd_copy2, cmd, PGSIZE);
+  strlcpy(fn_copy, file_name, PGSIZE);
 
-  /* Check for if cmd is empty */
-  if (strcmp(cmd, "") == 0 || cmd == NULL) {
-    return TID_ERROR;
-  }
-
-  char* saveptr;
-  char* file_name = strtok_r(cmd_copy2, " ", &saveptr);
-
-  shared_status_t* shared = shared_struct_init();
-  list_push_back(&thread_current()->pcb->children_shared_structs, &shared->shared_elem);
-
-  struct new_thread_arg_struct args;
-  args.cmd = cmd_copy;
-  args.shared = shared;
-
-  /* Create a new thread to execute CMD. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, &args);
-  if (tid == TID_ERROR) {
-    palloc_free_page(cmd_copy);
-    decrement_ref_cnt(shared);
-  }
-
-  /* Set the shared's PID, then WAIT. Will end wait when loaded. */
-  shared->child_pid = tid;
-  sema_down(&shared->sema);
-  if (shared->failed_load) {
-    return TID_ERROR;
-  }
+  /* Create a new thread to execute FILE_NAME. */
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  if (tid == TID_ERROR)
+    palloc_free_page(fn_copy);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* arguments) {
-  struct new_thread_arg_struct* args = (struct new_thread_arg_struct*)arguments;
-  char* cmd = args->cmd;
-  shared_status_t* shared = args->shared;
-
+static void start_process(void* file_name_) {
+  char* file_name = (char*)file_name_;
   struct thread* t = thread_current();
   struct intr_frame if_;
-  bool success, pcb_success, fd_tbl_success;
+  bool success, pcb_success;
 
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
@@ -158,22 +88,9 @@ static void start_process(void* arguments) {
     new_pcb->pagedir = NULL;
     t->pcb = new_pcb;
 
-    /* Initialize file descriptor table, its entries and next_fd. */
-    t->pcb->fd_table = (struct fd_table*)malloc(sizeof(struct fd_table));
-    if (t->pcb->fd_table == NULL) {
-      fd_tbl_success = false;
-    } else {
-      fd_tbl_success = true;
-      list_init(&(t->pcb->fd_table->fd_entries));
-      t->pcb->fd_table->next_fd = 3;
-    }
-
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
     strlcpy(t->pcb->process_name, t->name, sizeof t->name);
-
-    list_init(&t->pcb->children_shared_structs);
-    t->pcb->my_shared_status = shared;
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -182,67 +99,11 @@ static void start_process(void* arguments) {
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-
-    uint8_t curr_fpu[108];
-    asm volatile("fsave (%0); fninit; fsave (%1)" : : "g"(&curr_fpu), "g"(&if_.fpu_registers));
-    asm volatile("frstor (%0)" : : "g"(&curr_fpu));
-
-    // Parse thru file_name
-    int argc = 0;
-    size_t argv_size = 2;
-    char** argv = (char**)malloc(argv_size * sizeof(char*));
-    char** temp;
-    if (argv == NULL) {
-      success = false;
-    }
-
-    if (success) {
-      char* saveptr;
-
-      for (char* token = strtok_r(cmd, " ", &saveptr); token != NULL;
-           token = strtok_r(NULL, " ", &saveptr)) {
-
-        if (argc == argv_size) {
-          // Reallocate argv array size
-          argv_size *= 2;
-          temp = realloc(argv, argv_size * sizeof(char*));
-          if (temp == NULL) {
-            free(argv);
-            success = false;
-            break;
-          } else {
-            argv = temp;
-          }
-        }
-        argv[argc] = (char*)malloc(sizeof(char) * (strlen(token) + 1));
-        if (argv[argc] == NULL) {
-          free(argv);
-          success = false;
-          break;
-        }
-        strlcpy(argv[argc], token, strlen(token) + 1);
-        argc++;
-      }
-
-      // Load executable
-      if (success) {
-        success = load(cmd, &if_.eip, &if_.esp, argc, argv);
-      }
-    }
+    success = load(file_name, &if_.eip, &if_.esp);
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
   if (!success && pcb_success) {
-    // on failure to load executable file, allow write on them again
-    file_close(t->pcb->exec_file);
-
-    // free fd_table
-    if (fd_tbl_success) {
-      struct fd_table* fd_tbl_to_free = t->pcb->fd_table;
-      t->pcb->fd_table = NULL;
-      free(fd_tbl_to_free);
-    }
-
     // Avoid race where PCB is freed before t->pcb is set to NULL
     // If this happens, then an unfortuantely timed timer interrupt
     // can try to activate the pagedir, but it is now freed memory
@@ -252,17 +113,11 @@ static void start_process(void* arguments) {
   }
 
   /* Clean up. Exit on failure or jump to userspace */
-  palloc_free_page(cmd);
+  palloc_free_page(file_name);
   if (!success) {
-    shared->failed_load = true;
-    decrement_ref_cnt(shared);
-    sema_up(&shared->sema);
     sema_up(&temporary);
     thread_exit();
   }
-
-  /* End process_execute's waiting before jumping to userspace. */
-  sema_up(&shared->sema);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -274,20 +129,6 @@ static void start_process(void* arguments) {
   NOT_REACHED();
 }
 
-/* Helper func to get the shared struct from a child pid. 
-Returns NULL if DNE. */
-shared_status_t* get_shared_struct(pid_t child_pid) {
-  struct list* children = &thread_current()->pcb->children_shared_structs;
-  struct list_elem* e;
-  for (e = list_begin(children); e != list_end(children); e = list_next(e)) {
-    shared_status_t* shared = list_entry(e, shared_status_t, shared_elem);
-    if (shared->child_pid == child_pid)
-      return shared;
-  }
-
-  return NULL;
-}
-
 /* Waits for process with PID child_pid to die and returns its exit status.
    If it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If child_pid is invalid or if it was not a
@@ -297,27 +138,13 @@ shared_status_t* get_shared_struct(pid_t child_pid) {
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(pid_t child_pid) {
-  shared_status_t* child_shared = get_shared_struct(child_pid);
-  if (child_shared == NULL) {
-    // could not find child from this parent
-    return -1;
-  } else if (child_shared->already_waiting) {
-    // error if this process has already called process_wait on this child
-    return -1;
-  }
-  child_shared->already_waiting = true;
-  sema_down(&child_shared->sema);
-  child_shared->already_waiting = false;
-  int exit_code = child_shared->exit_code;
-
-  decrement_ref_cnt(child_shared);
-
-  return exit_code;
+int process_wait(pid_t child_pid UNUSED) {
+  sema_down(&temporary);
+  return 0;
 }
 
 /* Free the current process's resources. */
-void process_exit(int exit_code) {
+void process_exit(void) {
   struct thread* cur = thread_current();
   uint32_t* pd;
 
@@ -326,31 +153,6 @@ void process_exit(int exit_code) {
     thread_exit();
     NOT_REACHED();
   }
-
-  /* Clean up shared thread scheduling logic, free shared if ref_cnt=0 */
-  shared_status_t* shared = cur->pcb->my_shared_status;
-  shared->exit_code = exit_code;
-  shared->exited = true;
-  sema_up(&shared->sema);
-  decrement_ref_cnt(shared);
-
-  /* Clean up fd_table of this process if it exists. */
-  if (cur->pcb->fd_table != NULL) {
-    struct fd_table* fd_tbl_to_free = cur->pcb->fd_table;
-
-    while (!list_empty(&(fd_tbl_to_free->fd_entries))) {
-      struct list_elem* e = list_pop_front(&(fd_tbl_to_free->fd_entries));
-      struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
-      file_close(entry->file);
-      free(entry);
-    }
-
-    cur->pcb->fd_table = NULL;
-    free(fd_tbl_to_free);
-  }
-
-  // Close excetuable file and set it to be modifiable
-  file_close(cur->pcb->exec_file);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -457,7 +259,7 @@ struct Elf32_Phdr {
 #define PF_W 2 /* Writable. */
 #define PF_R 4 /* Readable. */
 
-static bool setup_stack(void** esp, int argc, char* argv[]);
+static bool setup_stack(void** esp);
 static bool validate_segment(const struct Elf32_Phdr*, struct file*);
 static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t read_bytes,
                          uint32_t zero_bytes, bool writable);
@@ -466,7 +268,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[]) {
+bool load(const char* file_name, void (**eip)(void), void** esp) {
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
@@ -486,12 +288,6 @@ bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
-
-  /* save exec_file so we can allow write on them when process exits or if load fails. */
-  t->pcb->exec_file = file;
-
-  /* Running executables shouldn't be modified. */
-  file_deny_write(file);
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
@@ -552,8 +348,7 @@ bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[
   }
 
   /* Set up stack. */
-  argv[0] = file_name;
-  if (!setup_stack(esp, argc, argv))
+  if (!setup_stack(esp))
     goto done;
 
   /* Start address. */
@@ -563,10 +358,7 @@ bool load(char* file_name, void (**eip)(void), void** esp, int argc, char* argv[
 
 done:
   /* We arrive here whether the load is successful or not. */
-  // file_close(file); // want to move this to process_exit to support lazy loading
-  /* "because an operating system may load code pages from the file lazily, or may page 
-    out some code pages and reload them from the file later." -- 162 Pintos Doc */
-
+  file_close(file);
   return success;
 }
 
@@ -673,55 +465,17 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
-static bool setup_stack(void** esp, int argc, char* argv[]) {
+static bool setup_stack(void** esp) {
   uint8_t* kpage;
   bool success = false;
-  char** stack_ptr = (char**)esp;
 
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
-    if (success) {
-      *stack_ptr = PHYS_BASE;
-      // ADDDRESSES:
-      // [0...argc-1] for args' addresses
-      // [argc] for NULL ptr
-      // [argc+1] for address of argv itself
-      char** addresses = (char**)malloc((argc + 2) * sizeof(char*));
-      addresses[argc] = NULL;
-      for (int i = argc - 1; i >= 0; i--) {
-        *stack_ptr -= (strlen(argv[i]) + 1);
-        memset(*stack_ptr + strlen(argv[i]), 0, 1);
-        memcpy(*stack_ptr, argv[i], strlen(argv[i]));
-        memcpy(&addresses[i], stack_ptr, sizeof *stack_ptr);
-      }
-
-      // stack align (account for all args plus null pointer and argv/argc)
-      // Stack align the stack pointer by decrementing esp such that the pointer will be at 16 -
-      // byte boundary by the time it pushes on argv and argc.
-      while ((int)(*stack_ptr - (argc + 3) * 4) % 16 != 0) {
-        *stack_ptr -= 1;
-      }
-
-      // Iteratively push the values of `addresses` onto the stack from last to first, decrementing `esp` by 4 each time.
-      for (int j = argc; j >= 0; j--) {
-        *stack_ptr -= 4;
-        char* address = addresses[j];
-        memcpy(*stack_ptr, &address, 4);
-      }
-      addresses[argc + 1] = *stack_ptr;
-
-      *stack_ptr -= 12;
-      memmove(*stack_ptr + 8, &addresses[argc + 1],
-              4);                       // set argv (location of argv[0] on the stack)
-      memcpy(*stack_ptr + 4, &argc, 4); // set argc
-      memset(*stack_ptr, 0, 4);         // set return
-
-      free(addresses);
-      free(argv);
-    } else {
+    if (success)
+      *esp = PHYS_BASE;
+    else
       palloc_free_page(kpage);
-    }
   }
   return success;
 }
