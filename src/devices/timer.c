@@ -164,7 +164,9 @@ static void timer_interrupt(struct intr_frame* args UNUSED) {
     if (ticks >= blocked_thread->wait_ticks) { // wake up time
       thread_unblock(blocked_thread);
       list_pop_front(&sleep_queue);
-      // TODO: preempt if higher effective priority
+      if (blocked_thread->effective_priority > thread_current()->effective_priority) {
+        intr_yield_on_return();
+      }
     } else {
       break; // list is ordered so we know nothing down the list will be within time
     }
