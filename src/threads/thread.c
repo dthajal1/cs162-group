@@ -25,6 +25,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list fifo_ready_list;
+static struct list strict_priority_ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -110,6 +111,7 @@ void thread_init(void) {
 
   lock_init(&tid_lock);
   list_init(&fifo_ready_list);
+  list_init(&strict_priority_ready_list);
   list_init(&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -332,10 +334,10 @@ void thread_foreach(thread_action_func* func, void* aux) {
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void thread_set_priority(int new_priority) { thread_current()->priority = new_priority; }
+void thread_set_priority(int new_priority) { thread_current()->base_priority = new_priority; }
 
 /* Returns the current thread's priority. */
-int thread_get_priority(void) { return thread_current()->priority; }
+int thread_get_priority(void) { return thread_current()->base_priority; }
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED) { /* Not yet implemented. */
@@ -431,9 +433,12 @@ static void init_thread(struct thread* t, const char* name, int priority) {
   t->status = THREAD_BLOCKED;
   strlcpy(t->name, name, sizeof t->name);
   t->stack = (uint8_t*)t + PGSIZE;
-  t->priority = priority;
+  t->base_priority = priority;
+  t->effective_priority = priority;
   t->pcb = NULL;
   t->magic = THREAD_MAGIC;
+  list_init(&t->donors);
+  t->donee = NULL;
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);
