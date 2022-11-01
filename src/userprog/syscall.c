@@ -38,15 +38,19 @@ static void syscall_handler(struct intr_frame* f) {
 
   /* Table of system calls. */
   static const struct syscall syscall_table[] = {
-      {0, (syscall_function*)sys_halt},      {1, (syscall_function*)sys_exit},
-      {1, (syscall_function*)sys_exec},      {1, (syscall_function*)sys_wait},
-      {2, (syscall_function*)sys_create},    {1, (syscall_function*)sys_remove},
-      {1, (syscall_function*)sys_open},      {1, (syscall_function*)sys_filesize},
-      {3, (syscall_function*)sys_read},      {3, (syscall_function*)sys_write},
-      {2, (syscall_function*)sys_seek},      {1, (syscall_function*)sys_tell},
-      {1, (syscall_function*)sys_close},     {1, (syscall_function*)sys_practice},
-      {1, (syscall_function*)sys_compute_e},
-  };
+      {0, (syscall_function*)sys_halt},         {1, (syscall_function*)sys_exit},
+      {1, (syscall_function*)sys_exec},         {1, (syscall_function*)sys_wait},
+      {2, (syscall_function*)sys_create},       {1, (syscall_function*)sys_remove},
+      {1, (syscall_function*)sys_open},         {1, (syscall_function*)sys_filesize},
+      {3, (syscall_function*)sys_read},         {3, (syscall_function*)sys_write},
+      {2, (syscall_function*)sys_seek},         {1, (syscall_function*)sys_tell},
+      {1, (syscall_function*)sys_close},        {1, (syscall_function*)sys_practice},
+      {1, (syscall_function*)sys_compute_e},    {3, (syscall_function*)sys_pt_create},
+      {0, (syscall_function*)sys_pt_exit},      {1, (syscall_function*)sys_pt_join},
+      {1, (syscall_function*)sys_lock_init},    {1, (syscall_function*)sys_lock_acquire},
+      {1, (syscall_function*)sys_lock_release}, {2, (syscall_function*)sys_sema_init},
+      {1, (syscall_function*)sys_sema_down},    {1, (syscall_function*)sys_sema_up},
+      {0, (syscall_function*)sys_get_tid}};
 
   const struct syscall* sc;
   unsigned call_nr;
@@ -386,3 +390,28 @@ int sys_practice(int input) { return input + 1; }
 
 /* Compute e and return a float cast to an int */
 int sys_compute_e(int n) { return sys_sum_to_e(n); }
+
+int sys_pt_create(stub_fun sfun, pthread_fun tfun, void* arg) {
+  tid_t tid;
+  tid = pthread_execute(sfun, tfun, arg);
+  return tid;
+};
+
+int sys_pt_exit(void) {
+  struct thread* cur = thread_current();
+  if (cur->pcb->main_thread == curr) {
+    pthread_exit();
+  } else {
+    pthread_exit_main();
+  }
+  NOT_REACHED();
+};
+
+int sys_pt_join(tid_t tid) { return -1; };
+int sys_lock_init(lock_t* lock) { return -1; };
+int sys_lock_acquire(lock_t* lock) { return -1; };
+int sys_lock_release(lock_t* lock) { return -1; };
+int sys_sema_init(sema_t* sema, int val) { return -1; };
+int sys_sema_down(sema_t* sema) { return -1; };
+int sys_sema_up(sema_t* sema) { return -1; };
+int sys_get_tid(void) { return -1; };

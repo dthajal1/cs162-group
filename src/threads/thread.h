@@ -101,6 +101,16 @@ struct thread {
   unsigned magic; /* Detects stack overflow. */
 };
 
+struct join_status {
+  struct list_elem elem;
+  struct lock lock;
+  int ref_cnt;
+
+  pid_t pid;
+  int exit_code;
+  struct semaphore dead;
+};
+
 /* Types of scheduler that the user can request the kernel
  * use to schedule threads at runtime. */
 enum sched_policy {

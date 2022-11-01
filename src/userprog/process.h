@@ -29,14 +29,21 @@ struct process {
   /* Owned by process.c. */
   struct wait_status* wait_status; /* This process's completion status. */
   struct list children;            /* Completion status of children. */
-  uint32_t* pagedir;               /* Page directory. */
-  char process_name[16];           /* Name of the main thread */
-  struct file* bin_file;           /* Executable. */
-  struct thread* main_thread;      /* Pointer to main thread */
+  struct list children_threads;
+  uint32_t* pagedir;          /* Page directory. */
+  char process_name[16];      /* Name of the main thread */
+  struct file* bin_file;      /* Executable. */
+  struct thread* main_thread; /* Pointer to main thread */
 
   /* Owned by syscall.c. */
   struct list fds; /* List of file descriptors. */
   int next_handle; /* Next handle value. */
+
+  struct list locks;
+  int next_lock_handle;
+
+  struct list sema;
+  int next_sema_handle;
 };
 
 /* Tracks the completion of a process.
