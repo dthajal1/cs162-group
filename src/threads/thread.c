@@ -213,7 +213,10 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
   sf->ebp = 0;
 
   /* Add to run queue. */
-  thread_unblock(t);
+  if (t->effective_priority > thread_current()->effective_priority) {
+    thread_unblock(t);
+    thread_yield();
+  }
 
   return tid;
 }
@@ -242,6 +245,8 @@ static void thread_enqueue(struct thread* t) {
 
   if (active_sched_policy == SCHED_FIFO)
     list_push_back(&fifo_ready_list, &t->elem);
+  else if (active_sched_policy == SCHED_PRIO)
+    list_push_back(&strict_priority_ready_list, &t->elem);
   else
     PANIC("Unimplemented scheduling policy value: %d", active_sched_policy);
 }
@@ -337,7 +342,7 @@ void thread_foreach(thread_action_func* func, void* aux) {
 void thread_set_priority(int new_priority) { thread_current()->base_priority = new_priority; }
 
 /* Returns the current thread's priority. */
-int thread_get_priority(void) { return thread_current()->base_priority; }
+int thread_get_priority(void) { return thread_current()->effective_priority; }
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED) { /* Not yet implemented. */
@@ -464,9 +469,29 @@ static struct thread* thread_schedule_fifo(void) {
     return idle_thread;
 }
 
+/* Helper fxn. MUST BE USED ON A LIST CONTAINING THREAD ELEMS */
+struct thread* find_highest_pri_thread_from(struct list* thread_lst) {
+  struct list_elem* e;
+  struct thread* next_thread;
+  int highest_priority = -1;
+
+  for (e = list_begin(thread_lst); e != list_end(thread_lst); e = list_next(e)) {
+    struct thread* t = list_entry(e, struct thread, elem);
+    if (t->effective_priority > highest_priority) {
+      highest_priority = t->effective_priority;
+      next_thread = t;
+    }
+  }
+  return next_thread;
+}
+
 /* Strict priority scheduler */
 static struct thread* thread_schedule_prio(void) {
-  PANIC("Unimplemented scheduler policy: \"-sched=prio\"");
+  if (!list_empty(&strict_priority_ready_list)) {
+    return find_highest_pri_thread_from(&strict_priority_ready_list);
+  } else {
+    return idle_thread;
+  }
 }
 
 /* Fair priority scheduler */
