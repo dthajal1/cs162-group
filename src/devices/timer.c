@@ -157,18 +157,18 @@ static void timer_interrupt(struct intr_frame* args UNUSED) {
   ticks++;
   thread_tick();
 
+  /* wake up sleeping threads if waited for wait_ticks time */
   while (!list_empty(&sleep_queue)) {
-    struct list_elem* blocked_elm = list_head(&sleep_queue);
+    struct list_elem* blocked_elm = list_front(&sleep_queue);
     struct thread* blocked_thread = list_entry(blocked_elm, struct thread, s_elem);
-    if (ticks >= blocked_thread->wait_ticks) { // wake up time
+    if (ticks >= blocked_thread->wait_ticks) {
       thread_unblock(blocked_thread);
       list_pop_front(&sleep_queue);
       if (blocked_thread->effective_priority > thread_current()->effective_priority) {
         intr_yield_on_return();
       }
     } else {
-      return;
-      // break; // list is ordered so we know nothing down the list will be within time
+      break; // list is ordered so we know nothing down the list will be within time
     }
   }
 }
