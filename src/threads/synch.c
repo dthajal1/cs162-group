@@ -102,16 +102,17 @@ void sema_up(struct semaphore* sema) {
   ASSERT(sema != NULL);
 
   old_level = intr_disable();
+  sema->value++;
+
   if (!list_empty(&sema->waiters)) {
     // Pop waiters by effective priority
     struct thread* next_thread = find_highest_pri_thread_from(&sema->waiters);
     list_remove(&next_thread->elem);
     thread_unblock(next_thread);
-    if (next_thread->effective_priority > thread_current()->effective_priority) {
+    if (!intr_context() && next_thread->effective_priority > thread_current()->effective_priority) {
       thread_yield(); // Preempt current thread
     }
   }
-  sema->value++;
   intr_set_level(old_level);
 }
 
