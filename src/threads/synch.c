@@ -98,24 +98,28 @@ bool sema_try_down(struct semaphore* sema) {
    This function may be called from an interrupt handler. */
 void sema_up(struct semaphore* sema) {
   enum intr_level old_level;
+  struct thread* next_thread = NULL;
 
   ASSERT(sema != NULL);
 
   old_level = intr_disable();
-  sema->value++;
 
   if (!list_empty(&sema->waiters)) {
     // Find highest-prio waiter
-    struct thread* next_thread = find_highest_pri_thread_from(&sema->waiters);
+    next_thread = find_highest_pri_thread_from(&sema->waiters);
     // Remove that waiter from sema's waiters
     list_remove(&next_thread->elem);
     // Unblock that waiter
     thread_unblock(next_thread);
-    // Preempt current thread
-    if (!intr_context() && next_thread->effective_priority > thread_current()->effective_priority) {
-      thread_yield();
-    }
   }
+  sema->value++;
+
+  // Preempt current thread
+  if (next_thread && !intr_context() &&
+      next_thread->effective_priority > thread_current()->effective_priority) {
+    thread_yield();
+  }
+
   intr_set_level(old_level);
 }
 
