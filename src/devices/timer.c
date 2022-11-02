@@ -89,10 +89,6 @@ void timer_sleep(int64_t ticks) {
   int64_t start = timer_ticks();
   ASSERT(intr_get_level() == INTR_ON);
 
-  // put thread to sleep until condvar == treue. cond_wait()
-  struct list ll;
-  list_init(&ll);
-  list_insert_ordered() list_push_back(&ll, thread_current()->s_elem);
   while (timer_elapsed(start) < ticks)
     thread_yield();
 }
