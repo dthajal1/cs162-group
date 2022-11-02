@@ -407,8 +407,10 @@ int sys_pt_exit(void) {
   NOT_REACHED();
 };
 
-int sys_pt_join(tid_t tid) { return -1; };
-int sys_lock_init(lock_t* lock) { return -1; };
+int sys_pt_join(tid_t tid) { return pthread_join(tid); };
+int sys_lock_init(lock_t* lock){
+
+};
 int sys_lock_acquire(lock_t* lock) { return -1; };
 int sys_lock_release(lock_t* lock) { return -1; };
 int sys_sema_init(sema_t* sema, int val) { return -1; };
