@@ -110,8 +110,10 @@ void thread_init(void) {
   ASSERT(intr_get_level() == INTR_OFF);
 
   lock_init(&tid_lock);
-  list_init(&fifo_ready_list);
-  list_init(&strict_priority_ready_list);
+  if (active_sched_policy == SCHED_PRIO)
+    list_init(&strict_priority_ready_list);
+  else
+    list_init(&fifo_ready_list);
   list_init(&all_list);
 
   /* Set up a thread structure for the running thread. */

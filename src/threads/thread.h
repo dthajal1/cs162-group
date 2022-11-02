@@ -111,7 +111,7 @@ struct thread {
  * use to schedule threads at runtime. */
 enum sched_policy {
   SCHED_FIFO,  // First-in, first-out scheduler
-  SCHED_PRIO,  // Strict-priority scheduler with round-robin tiebreaking
+  SCHED_PRIO,  // Strict-priority scheduler with first-come first-serve tiebreaking
   SCHED_FAIR,  // Implementation-defined fair scheduler
   SCHED_MLFQS, // Multi-level Feedback Queue Scheduler
 };
