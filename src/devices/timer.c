@@ -85,27 +85,26 @@ static bool waitticks_less(const struct list_elem* a_, const struct list_elem* b
   const struct thread* a = list_entry(a_, struct thread, s_elem);
   const struct thread* b = list_entry(b_, struct thread, s_elem);
 
-  // <= ?
   return a->wait_ticks < b->wait_ticks;
 }
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void timer_sleep(int64_t ticks) {
+  if (ticks <= 0) {
+    return;
+  }
+
   int64_t start = timer_ticks();
 
   ASSERT(intr_get_level() == INTR_ON);
 
   enum intr_level old_level = intr_disable();
-  if (ticks < 0) {
-    // thread yield?
-  }
 
   struct thread* curr = thread_current();
   curr->wait_ticks = start + ticks;
   list_insert_ordered(&sleep_queue, &curr->s_elem, waitticks_less, NULL);
   thread_block();
-
   intr_set_level(old_level);
 }
 
@@ -168,7 +167,8 @@ static void timer_interrupt(struct intr_frame* args UNUSED) {
         intr_yield_on_return();
       }
     } else {
-      break; // list is ordered so we know nothing down the list will be within time
+      return;
+      // break; // list is ordered so we know nothing down the list will be within time
     }
   }
 }
