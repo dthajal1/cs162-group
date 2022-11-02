@@ -90,6 +90,7 @@ struct thread {
   int effective_priority;    /* Same as BASE_PRIORITY if not donated by another thread. */
   struct list_elem allelem;  /* List element for all threads list. */
 
+  /* Owned by timer.c. */
   struct list_elem s_elem; /* List elem for sleeping threads. */
   int64_t wait_ticks;      /* Global tick time to wait until waking this thread. */
 
