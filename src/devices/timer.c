@@ -78,7 +78,6 @@ int64_t timer_ticks(void) {
    should be a value once returned by timer_ticks(). */
 int64_t timer_elapsed(int64_t then) { return timer_ticks() - then; }
 
-
 /* Returns true if thread A's wait_ticks is less than thread B's wait_ticks, false
    otherwise. */
 static bool waitticks_less(const struct list_elem* a_, const struct list_elem* b_,

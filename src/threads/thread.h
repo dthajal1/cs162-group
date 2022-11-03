@@ -133,6 +133,8 @@ void thread_start(void);
 void thread_tick(void);
 void thread_print_stats(void);
 
+bool thread_prio_lesser(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED);
+
 typedef void thread_func(void* aux);
 tid_t thread_create(const char* name, int priority, thread_func*, void*);
 
@@ -145,6 +147,7 @@ const char* thread_name(void);
 
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
+void yield_if_not_highest_prio(void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread* t, void* aux);
@@ -158,6 +161,6 @@ void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
-struct thread* find_highest_pri_thread_from(struct list* thread_lst);
+void reset_effective_prio_from_donors(struct thread* t);
 
 #endif /* threads/thread.h */

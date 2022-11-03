@@ -93,6 +93,17 @@ scheduler_func* scheduler_jump_table[8] = {thread_schedule_fifo,     thread_sche
                                            thread_schedule_reserved, thread_schedule_reserved,
                                            thread_schedule_reserved, thread_schedule_reserved};
 
+/* Helper fxn to recompute & reset t's effective priority based on its donors list. */
+void reset_effective_prio_from_donors(struct thread* t) {
+  struct list_elem* e = list_max(&t->donors, thread_prio_lesser, NULL);
+  struct thread* highest_prio_donor = list_entry(e, struct thread, d_elem);
+  if (highest_prio_donor->effective_priority > t->base_priority) {
+    t->effective_priority = highest_prio_donor->effective_priority;
+  } else {
+    t->effective_priority = t->base_priority;
+  }
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -162,6 +173,13 @@ void thread_tick(void) {
 void thread_print_stats(void) {
   printf("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n", idle_ticks, kernel_ticks,
          user_ticks);
+}
+
+/* Helper fxn to compare thread priority */
+bool thread_prio_lesser(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED) {
+  struct thread* s = list_entry(a, struct thread, elem);
+  struct thread* t = list_entry(b, struct thread, elem);
+  return (s->effective_priority < t->effective_priority);
 }
 
 /* Creates a new kernel thread named NAME with the given initial
@@ -301,13 +319,22 @@ tid_t thread_tid(void) { return thread_current()->tid; }
    returns to the caller. */
 void thread_exit(void) {
   ASSERT(!intr_context());
-
-  /* Remove thread from all threads list, set our status to dying,
-     and schedule another process.  That process will destroy us
-     when it calls thread_switch_tail(). */
   intr_disable();
-  list_remove(&thread_current()->allelem);
-  thread_current()->status = THREAD_DYING;
+
+  struct thread* curr_thread = thread_current();
+
+  // Remove thread from all threads list
+  list_remove(&curr_thread->allelem);
+
+  // If we have a donee, remove myself and recompute donee's effective prio
+  if (curr_thread->donee) {
+    list_remove(&curr_thread->d_elem);
+    reset_effective_prio_from_donors(curr_thread->donee);
+  }
+
+  // Set our status to dying, and schedule another process.
+  // That process will destroy us when it calls thread_switch_tail().
+  curr_thread->status = THREAD_DYING;
   schedule();
   NOT_REACHED();
 }
@@ -328,6 +355,19 @@ void thread_yield(void) {
   intr_set_level(old_level);
 }
 
+void yield_if_not_highest_prio(void) {
+  struct list_elem* e;
+  for (e = list_begin(&strict_priority_ready_list); e != list_end(&strict_priority_ready_list);
+       e = list_next(e)) {
+    struct thread* t = list_entry(e, struct thread, elem);
+    if (thread_current()->effective_priority < t->effective_priority) {
+      // If thread is no longer highest priority, preempt
+      thread_yield();
+      return;
+    }
+  }
+}
+
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void thread_foreach(thread_action_func* func, void* aux) {
@@ -343,10 +383,13 @@ void thread_foreach(thread_action_func* func, void* aux) {
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
+  enum intr_level old_level = intr_disable();
+
   thread_current()->base_priority = new_priority;
-  if (new_priority > thread_current()->effective_priority) {
-    thread_current()->effective_priority = new_priority; // TEMP FOR PRIO-SCHEDULING ONLY
-  }
+  reset_effective_prio_from_donors(thread_current());
+  yield_if_not_highest_prio();
+
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -478,26 +521,12 @@ static struct thread* thread_schedule_fifo(void) {
     return idle_thread;
 }
 
-/* Helper fxn. MUST BE USED ON A LIST CONTAINING THREAD ELEMS */
-struct thread* find_highest_pri_thread_from(struct list* thread_lst) {
-  struct list_elem* e;
-  struct thread* next_thread;
-  int highest_priority = -1;
-
-  for (e = list_begin(thread_lst); e != list_end(thread_lst); e = list_next(e)) {
-    struct thread* t = list_entry(e, struct thread, elem);
-    if (t->effective_priority > highest_priority) {
-      highest_priority = t->effective_priority;
-      next_thread = t;
-    }
-  }
-  return next_thread;
-}
-
 /* Strict priority scheduler */
 static struct thread* thread_schedule_prio(void) {
   if (!list_empty(&strict_priority_ready_list)) {
-    return find_highest_pri_thread_from(&strict_priority_ready_list);
+    struct list_elem* e = list_max(&strict_priority_ready_list, thread_prio_lesser, NULL);
+    list_remove(e);
+    return list_entry(e, struct thread, elem);
   } else {
     return idle_thread;
   }
