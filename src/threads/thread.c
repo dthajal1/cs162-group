@@ -162,6 +162,13 @@ void thread_print_stats(void) {
          user_ticks);
 }
 
+/* Helper fxn to compare thread priority */
+bool thread_prio_lesser(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED) {
+  struct thread* s = list_entry(a, struct thread, elem);
+  struct thread* t = list_entry(b, struct thread, elem);
+  return (s->effective_priority < t->effective_priority);
+}
+
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
    and adds it to the ready queue.  Returns the thread identifier
@@ -476,26 +483,12 @@ static struct thread* thread_schedule_fifo(void) {
     return idle_thread;
 }
 
-/* Helper fxn. MUST BE USED ON A LIST CONTAINING THREAD ELEMS */
-struct thread* find_highest_pri_thread_from(struct list* thread_lst) {
-  struct list_elem* e;
-  struct thread* next_thread;
-  int highest_priority = -1;
-
-  for (e = list_begin(thread_lst); e != list_end(thread_lst); e = list_next(e)) {
-    struct thread* t = list_entry(e, struct thread, elem);
-    if (t->effective_priority > highest_priority) {
-      highest_priority = t->effective_priority;
-      next_thread = t;
-    }
-  }
-  return next_thread;
-}
-
 /* Strict priority scheduler */
 static struct thread* thread_schedule_prio(void) {
   if (!list_empty(&strict_priority_ready_list)) {
-    return find_highest_pri_thread_from(&strict_priority_ready_list);
+    struct list_elem* e = list_max(&strict_priority_ready_list, thread_prio_lesser, NULL);
+    list_remove(e);
+    return list_entry(e, struct thread, elem);
   } else {
     return idle_thread;
   }

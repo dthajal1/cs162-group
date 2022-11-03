@@ -106,7 +106,8 @@ void sema_up(struct semaphore* sema) {
 
   if (!list_empty(&sema->waiters)) {
     // Find highest-prio waiter
-    next_thread = find_highest_pri_thread_from(&sema->waiters);
+    struct list_elem* e = list_max(&sema->waiters, thread_prio_lesser, NULL);
+    next_thread = list_entry(e, struct thread, elem);
     // Remove that waiter from sema's waiters
     list_remove(&next_thread->elem);
     // Unblock that waiter
@@ -357,17 +358,8 @@ void cond_signal(struct condition* cond, struct lock* lock UNUSED) {
 
   if (!list_empty(&cond->waiters)) {
     // Pop waiters by effective priority
-    struct list_elem* e;
-    struct semaphore_elem* next_semelem;
-    int highest_priority = -1;
-
-    for (e = list_begin(&cond->waiters); e != list_end(&cond->waiters); e = list_next(e)) {
-      struct semaphore_elem* sem_elem = list_entry(e, struct semaphore_elem, elem);
-      if (sem_elem->thread->effective_priority > highest_priority) {
-        highest_priority = sem_elem->thread->effective_priority;
-        next_semelem = sem_elem;
-      }
-    }
+    struct list_elem* e = list_max(&cond->waiters, thread_prio_lesser, NULL);
+    struct semaphore_elem* next_semelem = list_entry(e, struct semaphore_elem, elem);
     list_remove(&next_semelem->elem);
     sema_up(&next_semelem->semaphore);
     if (next_semelem->thread->effective_priority > thread_current()->effective_priority) {
