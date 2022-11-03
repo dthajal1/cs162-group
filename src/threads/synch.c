@@ -116,10 +116,10 @@ void sema_up(struct semaphore* sema) {
   intr_set_level(old_level);
 
   // Preempt current thread
-  if (next_thread && !intr_context() &&
-      next_thread->effective_priority > thread_current()->effective_priority) {
-    thread_yield();
-  }
+  // if (next_thread && !intr_context() &&
+  //     next_thread->effective_priority > thread_current()->effective_priority) {
+  //   thread_yield();
+  // }
 }
 
 static void sema_test_helper(void* sema_);
