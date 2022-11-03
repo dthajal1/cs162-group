@@ -399,7 +399,7 @@ int sys_pt_create(stub_fun sfun, pthread_fun tfun, void* arg) {
 
 int sys_pt_exit(void) {
   struct thread* cur = thread_current();
-  if (cur->pcb->main_thread == curr) {
+  if (cur->pcb->main_thread == cur) {
     pthread_exit();
   } else {
     pthread_exit_main();
@@ -408,9 +408,7 @@ int sys_pt_exit(void) {
 };
 
 int sys_pt_join(tid_t tid) { return pthread_join(tid); };
-int sys_lock_init(lock_t* lock){
-
-};
+int sys_lock_init(lock_t* lock){};
 int sys_lock_acquire(lock_t* lock) { return -1; };
 int sys_lock_release(lock_t* lock) { return -1; };
 int sys_sema_init(sema_t* sema, int val) { return -1; };
