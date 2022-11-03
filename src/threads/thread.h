@@ -147,6 +147,7 @@ const char* thread_name(void);
 
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
+void yield_if_not_highest_prio(void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread* t, void* aux);
@@ -159,5 +160,7 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+
+void reset_effective_prio_from_donors(struct thread* t);
 
 #endif /* threads/thread.h */

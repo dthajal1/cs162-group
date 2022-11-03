@@ -189,8 +189,26 @@ void lock_acquire(struct lock* lock) {
   ASSERT(!intr_context());
   ASSERT(!lock_held_by_current_thread(lock));
 
+  enum intr_level old_level = intr_disable();
+
+  struct thread* curr_thread = thread_current();
+  if (lock->holder &&
+      lock->holder->effective_priority < curr_thread->effective_priority) { // DONATE
+    list_push_back(&lock->holder->donors, &curr_thread->d_elem);
+    // question: do we need to do this?::
+    // int potential_new_effective_prio =
+    //     find_highest_pri_thread_from(&lock->holder->donors)->effective_priority;
+    // if (potential_new_effective_prio > lock->holder->effective_priority) {
+    //   list_push_back(&lock->holder->donors, &lock->holder->d_elem);
+    //   lock->holder->effective_priority = potential_new_effective_prio;
+    // }
+    lock->holder->effective_priority = curr_thread->effective_priority;
+
+    curr_thread->donee = lock->holder;
+  }
   sema_down(&lock->semaphore);
-  lock->holder = thread_current();
+  lock->holder = curr_thread;
+  intr_set_level(old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -211,6 +229,19 @@ bool lock_try_acquire(struct lock* lock) {
   return success;
 }
 
+// Helper fxn: return true if this thread is waiting on this lock
+static bool waiting_on_lock(struct lock* lock, struct thread* t) {
+  struct list_elem* e;
+  for (e = list_begin(&lock->semaphore.waiters); e != list_end(&lock->semaphore.waiters);
+       e = list_next(e)) {
+    struct thread* waiter = list_entry(e, struct thread, elem);
+    if (t == waiter) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* Releases LOCK, which must be owned by the current thread.
 
    An interrupt handler cannot acquire a lock, so it does not
@@ -220,8 +251,32 @@ void lock_release(struct lock* lock) {
   ASSERT(lock != NULL);
   ASSERT(lock_held_by_current_thread(lock));
 
+  enum intr_level old_level = intr_disable();
+
   lock->holder = NULL;
+
+  // Loop thru curr_thread's donors to clean-up
+  struct thread* curr_thread = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&curr_thread->donors); e != list_end(&curr_thread->donors);
+       e = list_next(e)) {
+    struct thread* donor = list_entry(e, struct thread, d_elem); // note: use d_elem here, not elem
+    if (waiting_on_lock(lock, donor)) {
+      donor->donee = NULL;
+      list_remove(e);
+    }
+  }
+
+  // Recompute priority := max(effective priority out of our remaining donors, base prio)
+  reset_effective_prio_from_donors(curr_thread);
+
   sema_up(&lock->semaphore);
+
+  // QUESTION: isn't this already done inside sema_up?
+  // // Upon updating priorities, yield this thread if we're no longer highest prio
+  // yield_if_not_highest_prio();
+
+  intr_set_level(old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false

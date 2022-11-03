@@ -93,6 +93,19 @@ scheduler_func* scheduler_jump_table[8] = {thread_schedule_fifo,     thread_sche
                                            thread_schedule_reserved, thread_schedule_reserved,
                                            thread_schedule_reserved, thread_schedule_reserved};
 
+/* Helper fxn to recompute & reset t's effective priority based on its donors list. */
+void reset_effective_prio_from_donors(struct thread* t) {
+  int updated_effective_prio = t->base_priority;
+  struct list_elem* e;
+  for (e = list_begin(&t->donors); e != list_end(&t->donors); e = list_next(e)) {
+    struct thread* donor = list_entry(e, struct thread, d_elem);
+    if (donor->effective_priority > updated_effective_prio) {
+      updated_effective_prio = donor->effective_priority;
+    }
+  }
+  t->effective_priority = updated_effective_prio;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -306,13 +319,22 @@ tid_t thread_tid(void) { return thread_current()->tid; }
    returns to the caller. */
 void thread_exit(void) {
   ASSERT(!intr_context());
-
-  /* Remove thread from all threads list, set our status to dying,
-     and schedule another process.  That process will destroy us
-     when it calls thread_switch_tail(). */
   intr_disable();
-  list_remove(&thread_current()->allelem);
-  thread_current()->status = THREAD_DYING;
+
+  struct thread* curr_thread = thread_current();
+
+  // Remove thread from all threads list
+  list_remove(&curr_thread->allelem);
+
+  // If we have a donee, remove myself and recompute donee's effective prio
+  if (curr_thread->donee) {
+    list_remove(&curr_thread->d_elem);
+    reset_effective_prio_from_donors(curr_thread->donee);
+  }
+
+  // Set our status to dying, and schedule another process.
+  // That process will destroy us when it calls thread_switch_tail().
+  curr_thread->status = THREAD_DYING;
   schedule();
   NOT_REACHED();
 }
@@ -333,6 +355,19 @@ void thread_yield(void) {
   intr_set_level(old_level);
 }
 
+void yield_if_not_highest_prio(void) {
+  struct list_elem* e;
+  for (e = list_begin(&strict_priority_ready_list); e != list_end(&strict_priority_ready_list);
+       e = list_next(e)) {
+    struct thread* t = list_entry(e, struct thread, elem);
+    if (thread_current()->effective_priority < t->effective_priority) {
+      // If thread is no longer highest priority, preempt
+      thread_yield();
+      return;
+    }
+  }
+}
+
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void thread_foreach(thread_action_func* func, void* aux) {
@@ -348,8 +383,13 @@ void thread_foreach(thread_action_func* func, void* aux) {
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
+  enum intr_level old_level = intr_disable();
+
   thread_current()->base_priority = new_priority;
-  thread_current()->effective_priority = new_priority; // TEMP FOR PRIO-SCHEDULING ONLY
+  reset_effective_prio_from_donors(thread_current());
+  yield_if_not_highest_prio();
+
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
