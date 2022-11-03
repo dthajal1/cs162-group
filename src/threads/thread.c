@@ -95,15 +95,13 @@ scheduler_func* scheduler_jump_table[8] = {thread_schedule_fifo,     thread_sche
 
 /* Helper fxn to recompute & reset t's effective priority based on its donors list. */
 void reset_effective_prio_from_donors(struct thread* t) {
-  int updated_effective_prio = t->base_priority;
-  struct list_elem* e;
-  for (e = list_begin(&t->donors); e != list_end(&t->donors); e = list_next(e)) {
-    struct thread* donor = list_entry(e, struct thread, d_elem);
-    if (donor->effective_priority > updated_effective_prio) {
-      updated_effective_prio = donor->effective_priority;
-    }
+  struct list_elem* e = list_max(&t->donors, thread_prio_lesser, NULL);
+  struct thread* highest_prio_donor = list_entry(e, struct thread, d_elem);
+  if (highest_prio_donor->effective_priority > t->base_priority) {
+    t->effective_priority = highest_prio_donor->effective_priority;
+  } else {
+    t->effective_priority = t->base_priority;
   }
-  t->effective_priority = updated_effective_prio;
 }
 
 /* Initializes the threading system by transforming the code
