@@ -3,6 +3,7 @@
 
 #include "threads/thread.h"
 #include "userprog/process.h"
+#include "lib/user/syscall.h"
 
 int sys_halt(void);
 int sys_exit(int status);

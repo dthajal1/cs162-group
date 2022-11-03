@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/fixed-point.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -106,7 +107,7 @@ struct join_status {
   struct lock lock;
   int ref_cnt;
 
-  pid_t pid;
+  tid_t tid;
   int exit_code;
   struct semaphore dead;
 };
