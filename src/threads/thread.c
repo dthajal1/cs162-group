@@ -344,7 +344,9 @@ void thread_foreach(thread_action_func* func, void* aux) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
   thread_current()->base_priority = new_priority;
-  thread_current()->effective_priority = new_priority; // TEMP FOR PRIO-SCHEDULING ONLY
+  if (new_priority > thread_current()->effective_priority) {
+    thread_current()->effective_priority = new_priority; // TEMP FOR PRIO-SCHEDULING ONLY
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -450,6 +452,7 @@ static void init_thread(struct thread* t, const char* name, int priority) {
   t->magic = THREAD_MAGIC;
   list_init(&t->donors);
   t->donee = NULL;
+  t->wait_ticks = 0;
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);
