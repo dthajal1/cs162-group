@@ -349,9 +349,7 @@ void thread_foreach(thread_action_func* func, void* aux) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
   thread_current()->base_priority = new_priority;
-  if (new_priority > thread_current()->effective_priority) {
-    thread_current()->effective_priority = new_priority; // TEMP FOR PRIO-SCHEDULING ONLY
-  }
+  thread_current()->effective_priority = new_priority; // TEMP FOR PRIO-SCHEDULING ONLY
 }
 
 /* Returns the current thread's priority. */
