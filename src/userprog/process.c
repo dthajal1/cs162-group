@@ -40,6 +40,8 @@ struct exec_info {
 struct pthread_exec_info {
   struct semaphore load_done;
   struct join_status* join_status;
+  stub_fun* sf;
+  pthread_fun* tf;
   bool success;
 };
 
@@ -702,7 +704,37 @@ pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. You may find it necessary to change the
    function signature. */
-bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED) { return false; }
+bool setup_thread(stub_fun sf, pthread_fun tf, void (**eip)(void) UNUSED, void** esp UNUSED) {
+  uint8_t* kpage;
+  bool success = false;
+
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  if (kpage != NULL) {
+    uint8_t* upage = ((uint8_t*)PHYS_BASE) - PGSIZE;
+    if (install_page(upage, kpage, true)) { // change
+      *eip = (void (*)(void))sf;
+      success = false;
+      // success = init_cmd_line(kpage, upage, cmd_line, esp);
+    } else {
+      palloc_free_page(kpage);
+    }
+  }
+  /*
+  uint8_t* kpage;
+  bool success = false;
+
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  if (kpage != NULL) {
+    uint8_t* upage = ((uint8_t*)PHYS_BASE) - PGSIZE;
+    if (install_page(upage, kpage, true))
+      success = init_cmd_line(kpage, upage, cmd_line, esp);
+    else
+      palloc_free_page(kpage);
+  }
+  return success;
+  */
+  return success;
+}
 
 /* Starts a new thread with a new user stack running SF, which takes
    TF and ARG as arguments on its user stack. This new thread may be
@@ -716,6 +748,9 @@ bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED) { return false; 
 tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSED) {
   struct pthread_exec_info exec;
   tid_t tid;
+
+  exec.sf = sf;
+  exec.tf = tf;
 
   sema_init(&exec.load_done, 0);
   tid = thread_create("child_thread", PRI_DEFAULT, start_pthread, &exec);
@@ -740,19 +775,39 @@ static void start_pthread(void* exec_ UNUSED) {
   struct pthread_exec_info* exec = exec_;
   struct intr_frame if_;
   uint32_t fpu_curr[27];
-  bool success, pcb_success, ws_success;
+  bool success, ws_success;
 
   success = true;
   struct process* curr_pcb = t->pcb;
 
   exec->join_status = t->join_status = malloc(sizeof *exec->join_status);
-  success = exec->join_status != NULL;
+  success = ws_success = exec->join_status != NULL;
 
   if (success) {
-    return;
+    lock_init(&exec->join_status->lock);
+    exec->join_status->ref_cnt = 2;
+    exec->join_status->tid = t->tid;
+    exec->join_status->exit_code = -1;
+    sema_init(&exec->join_status->dead, 0);
   }
 
-  return;
+  if (success) {
+    memset(&if_, 0, sizeof if_);
+    fpu_save_init(&if_.fpu, &fpu_curr);
+    if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+    if_.cs = SEL_UCSEG;
+    if_.eflags = FLAG_IF | FLAG_MBS;
+    success = setup_stack(exec->sf, exec->tf, exec->file_name, &if_.eip, &if_.esp);
+  }
+  if (!success && ws_success)
+    free(exec->join_status);
+
+  exec->success = success;
+  sema_up(&exec->load_done);
+  if (!success)
+    thread_exit();
+  asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+  NOT_REACHED();
 
   /*
   struct thread* t = thread_current();

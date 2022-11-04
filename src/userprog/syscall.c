@@ -414,4 +414,4 @@ int sys_lock_release(lock_t* lock) { return -1; };
 int sys_sema_init(sema_t* sema, int val) { return -1; };
 int sys_sema_down(sema_t* sema) { return -1; };
 int sys_sema_up(sema_t* sema) { return -1; };
-int sys_get_tid(void) { return -1; };
+int sys_get_tid(void) { return thread_current()->tid; };
