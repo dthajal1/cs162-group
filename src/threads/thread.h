@@ -83,6 +83,7 @@ typedef int tid_t;
    blocked state is on a semaphore wait list. */
 struct thread {
   /* Owned by thread.c. */
+  struct join_status* join_status;
   tid_t tid;                 /* Thread identifier. */
   enum thread_status status; /* Thread state. */
   char name[16];             /* Name (for debugging purposes). */
@@ -107,7 +108,7 @@ struct join_status {
   struct lock lock;
   int ref_cnt;
 
-  pid_t pid;
+  tid_t tid;
   int exit_code;
   struct semaphore dead;
 };

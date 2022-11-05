@@ -401,7 +401,7 @@ int sys_pt_create(stub_fun sfun, pthread_fun tfun, void* arg) {
 
 int sys_pt_exit(void) {
   struct thread* cur = thread_current();
-  if (cur->pcb->main_thread == curr) {
+  if (cur->pcb->main_thread == cur) {
     pthread_exit();
   } else {
     pthread_exit_main();
@@ -439,4 +439,4 @@ int sys_sema_init(sema_t* sema, int val) {
 };
 int sys_sema_down(sema_t* sema) { return -1; };
 int sys_sema_up(sema_t* sema) { return -1; };
-int sys_get_tid(void) { return -1; };
+int sys_get_tid(void) { return thread_current()->tid; };

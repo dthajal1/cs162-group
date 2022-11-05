@@ -37,6 +37,14 @@ struct exec_info {
   bool success;                    /* Program successfully loaded? */
 };
 
+struct pthread_exec_info {
+  struct semaphore load_done;
+  struct join_status* join_status;
+  stub_fun* sf;
+  pthread_fun* tf;
+  bool success;
+};
+
 /* Initializes user programs in the system by ensuring the main
    thread has a minimal PCB so that it can execute and wait for
    the first user process. Any additions to the PCB should be also
@@ -696,7 +704,37 @@ pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. You may find it necessary to change the
    function signature. */
-bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED) { return false; }
+bool setup_thread(stub_fun sf, pthread_fun tf, void (**eip)(void) UNUSED, void** esp UNUSED) {
+  uint8_t* kpage;
+  bool success = false;
+
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  if (kpage != NULL) {
+    uint8_t* upage = ((uint8_t*)PHYS_BASE) - PGSIZE;
+    if (install_page(upage, kpage, true)) { // change
+      *eip = (void (*)(void))sf;
+      success = false;
+      // success = init_cmd_line(kpage, upage, cmd_line, esp);
+    } else {
+      palloc_free_page(kpage);
+    }
+  }
+  /*
+  uint8_t* kpage;
+  bool success = false;
+
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  if (kpage != NULL) {
+    uint8_t* upage = ((uint8_t*)PHYS_BASE) - PGSIZE;
+    if (install_page(upage, kpage, true))
+      success = init_cmd_line(kpage, upage, cmd_line, esp);
+    else
+      palloc_free_page(kpage);
+  }
+  return success;
+  */
+  return success;
+}
 
 /* Starts a new thread with a new user stack running SF, which takes
    TF and ARG as arguments on its user stack. This new thread may be
@@ -707,7 +745,24 @@ bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED) { return false; 
    This function will be implemented in Project 2: Multithreading and
    should be similar to process_execute (). For now, it does nothing.
    */
-tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSED) { return -1; }
+tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSED) {
+  struct pthread_exec_info exec;
+  tid_t tid;
+
+  exec.sf = sf;
+  exec.tf = tf;
+
+  sema_init(&exec.load_done, 0);
+  tid = thread_create("child_thread", PRI_DEFAULT, start_pthread, &exec);
+  if (tid != TID_ERROR) {
+    sema_down(&exec.load_done);
+    if (exec.success)
+      list_push_back(&thread_current()->pcb->children_threads, &exec.join_status->elem);
+    else
+      tid = TID_ERROR;
+  }
+  return tid;
+}
 
 /* A thread function that creates a new user thread and starts it
    running. Responsible for adding itself to the list of threads in
@@ -715,7 +770,111 @@ tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSE
 
    This function will be implemented in Project 2: Multithreading and
    should be similar to start_process (). For now, it does nothing. */
-static void start_pthread(void* exec_ UNUSED) {}
+static void start_pthread(void* exec_ UNUSED) {
+  struct thread* t = thread_current();
+  struct pthread_exec_info* exec = exec_;
+  struct intr_frame if_;
+  uint32_t fpu_curr[27];
+  bool success, ws_success;
+
+  success = true;
+  struct process* curr_pcb = t->pcb;
+
+  exec->join_status = t->join_status = malloc(sizeof *exec->join_status);
+  success = ws_success = exec->join_status != NULL;
+
+  if (success) {
+    lock_init(&exec->join_status->lock);
+    exec->join_status->ref_cnt = 2;
+    exec->join_status->tid = t->tid;
+    exec->join_status->exit_code = -1;
+    sema_init(&exec->join_status->dead, 0);
+  }
+
+  if (success) {
+    memset(&if_, 0, sizeof if_);
+    fpu_save_init(&if_.fpu, &fpu_curr);
+    if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+    if_.cs = SEL_UCSEG;
+    if_.eflags = FLAG_IF | FLAG_MBS;
+    success = setup_stack(exec->sf, exec->tf, exec->file_name, &if_.eip, &if_.esp);
+  }
+  if (!success && ws_success)
+    free(exec->join_status);
+
+  exec->success = success;
+  sema_up(&exec->load_done);
+  if (!success)
+    thread_exit();
+  asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+  NOT_REACHED();
+
+  /*
+  struct thread* t = thread_current();
+
+  struct exec_info* exec = exec_;
+  struct intr_frame if_;
+  uint32_t fpu_curr[27];
+  bool success, pcb_success, ws_success;
+
+  struct process* new_pcb = malloc(sizeof(struct process));
+  success = pcb_success = new_pcb != NULL;
+
+  if (success) {
+    // Ensure that timer_interrupt() -> schedule() -> process_activate()
+    // does not try to activate our uninitialized pagedir
+    new_pcb->pagedir = NULL;
+    t->pcb = new_pcb;
+
+    // Continue initializing the PCB as normal
+    list_init(&t->pcb->children);
+    list_init(&t->pcb->fds);
+    t->pcb->next_handle = 2;
+    t->pcb->main_thread = t;
+    strlcpy(t->pcb->process_name, t->name, sizeof t->name);
+  }
+
+  if (success) {
+    exec->wait_status = t->pcb->wait_status = malloc(sizeof *exec->wait_status);
+    success = ws_success = exec->wait_status != NULL;
+  }
+
+  if (success) {
+    lock_init(&exec->wait_status->lock);
+    exec->wait_status->ref_cnt = 2;
+    exec->wait_status->pid = t->tid;
+    exec->wait_status->exit_code = -1;
+    sema_init(&exec->wait_status->dead, 0);
+  }
+
+  if (success) {
+    memset(&if_, 0, sizeof if_);
+    fpu_save_init(&if_.fpu, &fpu_curr);
+    if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+    if_.cs = SEL_UCSEG;
+    if_.eflags = FLAG_IF | FLAG_MBS;
+    success = load(exec->file_name, &if_.eip, &if_.esp);
+  }
+
+  if (!success && pcb_success) {
+    // Avoid race where PCB is freed before t->pcb is set to NULL
+    // If this happens, then an unfortuantely timed timer interrupt
+    // can try to activate the pagedir, but it is now freed memory
+    struct process* pcb_to_free = t->pcb;
+    t->pcb = NULL;
+    free(pcb_to_free);
+  }
+  if (!success && ws_success)
+    free(exec->wait_status);
+
+  exec->success = success;
+  sema_up(&exec->load_done);
+  if (!success)
+    thread_exit();
+  asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+  NOT_REACHED();
+  */
+}
 
 /* Waits for thread with TID to die, if that thread was spawned
    in the same process and has not been waited on yet. Returns TID on

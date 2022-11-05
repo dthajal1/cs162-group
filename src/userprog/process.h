@@ -16,6 +16,10 @@
    the TID of the main thread of the process */
 typedef tid_t pid_t;
 
+/* User level lock ids */
+typedef char lock_t;
+typedef char sema_t;
+
 /* Thread functions (Project 2: Multithreading) */
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
