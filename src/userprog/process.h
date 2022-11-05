@@ -40,10 +40,10 @@ struct process {
   int next_handle; /* Next handle value. */
 
   struct list locks;
-  int next_lock_handle;
+  lock_t next_lock_handle;
 
   struct list sema;
-  int next_sema_handle;
+  sema_t next_sema_handle;
 };
 
 /* Tracks the completion of a process.
@@ -65,6 +65,20 @@ struct file_descriptor {
   struct list_elem elem; /* List element. */
   struct file* file;     /* File. */
   int handle;            /* File handle. */
+};
+
+/* lock element within the list */
+struct lock_list_elem {
+  struct list_elem elem;
+  struct lock lock;
+  lock_t handle;
+};
+
+/* semaphore element within the list */
+struct sema_list_elem {
+  struct list_elem elem;
+  struct semaphore sema;
+  sema_t handle;
 };
 
 void userprog_init(void);

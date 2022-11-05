@@ -202,23 +202,25 @@ int sys_remove(const char* ufile) {
 /* Open system call. */
 int sys_open(const char* ufile) {
   char* kfile = copy_in_string(ufile);
-  struct file_descriptor* fd;
+  struct file_descriptor* fd; // task 1: CREATE NEW STRUCTURE FOR LOCK IN PROCESSh
   int handle = -1;
 
-  fd = malloc(sizeof *fd);
+  fd = malloc(sizeof *fd); // task 2: malloc our lock structure
   if (fd != NULL) {
-    lock_acquire(&fs_lock);
-    fd->file = filesys_open(kfile);
+    lock_acquire(&fs_lock); // ignore for now
+    fd->file = filesys_open(
+        kfile); // task 3: change to more than 1 line, malloc kernal lock (struct lock) and init with lock_init and then also assocaite it with our locklist elem thing
     if (fd->file != NULL) {
       struct thread* cur = thread_current();
       handle = fd->handle = cur->pcb->next_handle++;
-      list_push_front(&cur->pcb->fds, &fd->elem);
+      list_push_front(&cur->pcb->fds,
+                      &fd->elem); // task4: basically the same except change to lock handle
     } else
       free(fd);
-    lock_release(&fs_lock);
+    lock_release(&fs_lock); // ignore
   }
 
-  palloc_free_page(kfile);
+  palloc_free_page(kfile); // ignore
   return handle;
 }
 
@@ -408,12 +410,33 @@ int sys_pt_exit(void) {
 };
 
 int sys_pt_join(tid_t tid) { return pthread_join(tid); };
-int sys_lock_init(lock_t* lock){
-
+int sys_lock_init(lock_t* lock) {
+  struct lock_list_elem* lock_list_e = malloc(sizeof(struct lock_list_elem));
+  struct thread* cur = thread_current();
+  *lock = cur->pcb->next_lock_handle++;
+  lock_init(&lock_list_e->lock);
+  if (lock_list_e->lock != NULL) {
+    lock_list_e->handle = lock;
+    list_push_back(cur->pcb->locks, &lock_list_e->elem);
+    return 1;
+  }
+  return 0;
 };
+
 int sys_lock_acquire(lock_t* lock) { return -1; };
 int sys_lock_release(lock_t* lock) { return -1; };
-int sys_sema_init(sema_t* sema, int val) { return -1; };
+int sys_sema_init(sema_t* sema, int val) {
+  struct sema_list_elem* sema_list_e = malloc(sizeof(struct sema_list_elem));
+  struct thread* cur = thread_current();
+  *sema = cur->pcb->next_sema_handle++;
+  sema_init(&sema_list_e->sema, val);
+  if (sema_list_e->sema != NULL) {
+    sema_list_e->handle = lock;
+    list_push_back(cur->pcb->sema, &sema_list_e->elem);
+    return 1;
+  }
+  return 0;
+};
 int sys_sema_down(sema_t* sema) { return -1; };
 int sys_sema_up(sema_t* sema) { return -1; };
 int sys_get_tid(void) { return -1; };
