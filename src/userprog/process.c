@@ -25,7 +25,7 @@
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* cmd_line, void (**eip)(void), void** esp);
-bool setup_thread(void (**eip)(void), void** esp);
+bool setup_thread(stub_fun sf, pthread_fun tf, void (**eip)(void) UNUSED, void** esp UNUSED);
 
 /* Data structure shared between process_execute() in the
    invoking thread and start_process() in the newly invoked
@@ -797,7 +797,7 @@ static void start_pthread(void* exec_ UNUSED) {
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-    success = setup_stack(exec->sf, exec->tf, exec->file_name, &if_.eip, &if_.esp);
+    success = setup_thread(exec->sf, exec->tf, &if_.eip, &if_.esp);
   }
   if (!success && ws_success)
     free(exec->join_status);
