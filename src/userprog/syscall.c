@@ -440,7 +440,21 @@ int sys_lock_acquire(lock_t* lock) {
   }
   return 0;
 };
-int sys_lock_release(lock_t* lock) { return -1; };
+int sys_lock_release(lock_t* lock) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->locks); e != list_end(&cur->pcb->locks); e = list_next(e)) {
+    struct lock_list_elem* curr_lock_e = list_entry(e, struct lock_list_elem, elem);
+    if (curr_lock_e->handle == *lock) {
+      if ((&(curr_lock_e->lock))->holder != cur) {
+        return 0;
+      }
+      lock_release(&curr_lock_e->lock);
+      return 1;
+    }
+  }
+  return 0;
+};
 int sys_sema_init(sema_t* sema, int val) {
   if (sema != NULL && val >= 0) {
     struct sema_list_elem* sema_list_e = malloc(sizeof(struct sema_list_elem));
@@ -448,13 +462,35 @@ int sys_sema_init(sema_t* sema, int val) {
     *sema = cur->pcb->next_sema_handle++;
     if (sema_list_e != NULL) {
       sema_init(&sema_list_e->sema, val);
-      sema_list_e->handle = sema;
+      sema_list_e->handle = *sema;
       list_push_back(&cur->pcb->semas, &sema_list_e->elem);
       return 1;
     }
   }
   return 0;
 };
-int sys_sema_down(sema_t* sema) { return -1; };
-int sys_sema_up(sema_t* sema) { return -1; };
+int sys_sema_down(sema_t* sema) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->semas); e != list_end(&cur->pcb->semas); e = list_next(e)) {
+    struct sema_list_elem* curr_sema_e = list_entry(e, struct sema_list_elem, elem);
+    if (curr_sema_e->handle == *sema) {
+      sema_down(&curr_sema_e->sema);
+      return 1;
+    }
+  }
+  return 0;
+};
+int sys_sema_up(sema_t* sema) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->semas); e != list_end(&cur->pcb->semas); e = list_next(e)) {
+    struct sema_list_elem* curr_sema_e = list_entry(e, struct sema_list_elem, elem);
+    if (curr_sema_e->handle == *sema) {
+      sema_up(&curr_sema_e->sema);
+      return 1;
+    }
+  }
+  return 0;
+};
 int sys_get_tid(void) { return thread_current()->tid; };
