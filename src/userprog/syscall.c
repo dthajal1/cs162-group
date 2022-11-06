@@ -417,7 +417,7 @@ int sys_lock_init(lock_t* lock) {
     *lock = cur->pcb->next_lock_handle++;
     if (lock_list_e != NULL) {
       lock_init(&lock_list_e->lock);
-      lock_list_e->handle = lock;
+      lock_list_e->handle = *lock;
       list_push_back(&cur->pcb->locks, &lock_list_e->elem);
       return 1;
     }
