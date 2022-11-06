@@ -399,7 +399,7 @@ int sys_pt_create(stub_fun sfun, pthread_fun tfun, void* arg) {
 
 int sys_pt_exit(void) {
   struct thread* cur = thread_current();
-  if (cur->pcb->main_thread == cur) {
+  if (cur->pcb->main_thread != cur) {
     pthread_exit();
   } else {
     pthread_exit_main();

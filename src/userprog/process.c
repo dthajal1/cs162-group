@@ -25,7 +25,7 @@
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* cmd_line, void (**eip)(void), void** esp);
-bool setup_thread(void (**eip)(void), void** esp);
+bool setup_thread(stub_fun sf, pthread_fun tf, void* args, void (**eip)(void), void** esp);
 
 /* Data structure shared between process_execute() in the
    invoking thread and start_process() in the newly invoked
@@ -42,6 +42,8 @@ struct pthread_exec_info {
   struct join_status* join_status;
   stub_fun* sf;
   pthread_fun* tf;
+  void* args;
+  struct process* pcb;
   bool success;
 };
 
@@ -62,8 +64,9 @@ void userprog_init(void) {
   success = t->pcb != NULL;
 
   /* Main only needs a list of children */
-  if (success)
+  if (success) {
     list_init(&t->pcb->children);
+  }
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
@@ -121,6 +124,7 @@ static void start_process(void* exec_) {
 
     // Continue initializing the PCB as normal
     list_init(&t->pcb->children);
+    list_init(&t->pcb->children_threads);
     list_init(&t->pcb->fds);
     t->pcb->next_handle = 2;
     t->pcb->main_thread = t;
@@ -654,6 +658,23 @@ static bool init_cmd_line(uint8_t* kpage, uint8_t* upage, const char* cmd_line, 
   return true;
 }
 
+static bool init_thread_stack(uint8_t* kpage, uint8_t* upage, pthread_fun tf, void* args,
+                              void** esp) {
+  size_t ofs = PGSIZE;
+  char* const null = NULL;
+
+  while ((int)(upage + ofs - 8) % 16 != 0) {
+    ofs -= 1;
+  }
+
+  if (push(kpage, &ofs, &args, sizeof args) == NULL || push(kpage, &ofs, &tf, sizeof tf) == NULL ||
+      push(kpage, &ofs, &null, sizeof null) == NULL)
+    return false;
+
+  *esp = upage + ofs;
+  return true;
+}
+
 /* Create a minimal stack for T by mapping a page at the
    top of user virtual memory.  Fills in the page using CMD_LINE
    and sets *ESP to the stack pointer. */
@@ -704,35 +725,21 @@ pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. You may find it necessary to change the
    function signature. */
-bool setup_thread(stub_fun sf, pthread_fun tf, void (**eip)(void) UNUSED, void** esp UNUSED) {
+bool setup_thread(stub_fun sf, pthread_fun tf, void* args, void (**eip)(void) UNUSED,
+                  void** esp UNUSED) {
   uint8_t* kpage;
   bool success = false;
 
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
-    uint8_t* upage = ((uint8_t*)PHYS_BASE) - PGSIZE;
+    uint8_t* upage = ((uint8_t*)PHYS_BASE) - 2 * PGSIZE;
     if (install_page(upage, kpage, true)) { // change
+      success = init_thread_stack(kpage, upage, tf, args, esp);
       *eip = (void (*)(void))sf;
-      success = false;
-      // success = init_cmd_line(kpage, upage, cmd_line, esp);
     } else {
       palloc_free_page(kpage);
     }
   }
-  /*
-  uint8_t* kpage;
-  bool success = false;
-
-  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  if (kpage != NULL) {
-    uint8_t* upage = ((uint8_t*)PHYS_BASE) - PGSIZE;
-    if (install_page(upage, kpage, true))
-      success = init_cmd_line(kpage, upage, cmd_line, esp);
-    else
-      palloc_free_page(kpage);
-  }
-  return success;
-  */
   return success;
 }
 
@@ -751,6 +758,7 @@ tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSE
 
   exec.sf = sf;
   exec.tf = tf;
+  exec.pcb = thread_current()->pcb;
 
   sema_init(&exec.load_done, 0);
   tid = thread_create("child_thread", PRI_DEFAULT, start_pthread, &exec);
@@ -778,7 +786,8 @@ static void start_pthread(void* exec_ UNUSED) {
   bool success, ws_success;
 
   success = true;
-  struct process* curr_pcb = t->pcb;
+  t->pcb = exec->pcb;
+  process_activate();
 
   exec->join_status = t->join_status = malloc(sizeof *exec->join_status);
   success = ws_success = exec->join_status != NULL;
@@ -797,7 +806,7 @@ static void start_pthread(void* exec_ UNUSED) {
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-    success = setup_stack(exec->sf, exec->tf, exec->file_name, &if_.eip, &if_.esp);
+    success = setup_thread(exec->sf, exec->tf, exec->args, &if_.eip, &if_.esp);
   }
   if (!success && ws_success)
     free(exec->join_status);
