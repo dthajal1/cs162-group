@@ -411,29 +411,47 @@ int sys_pt_exit(void) {
 
 int sys_pt_join(tid_t tid) { return pthread_join(tid); };
 int sys_lock_init(lock_t* lock) {
-  struct lock_list_elem* lock_list_e = malloc(sizeof(struct lock_list_elem));
-  struct thread* cur = thread_current();
-  *lock = cur->pcb->next_lock_handle++;
-  lock_init(&lock_list_e->lock);
-  if (lock_list_e->lock != NULL) {
-    lock_list_e->handle = lock;
-    list_push_back(cur->pcb->locks, &lock_list_e->elem);
-    return 1;
+  if (lock != NULL) {
+    struct lock_list_elem* lock_list_e = malloc(sizeof(struct lock_list_elem));
+    struct thread* cur = thread_current();
+    *lock = cur->pcb->next_lock_handle++;
+    if (lock_list_e != NULL) {
+      lock_init(&lock_list_e->lock);
+      lock_list_e->handle = lock;
+      list_push_back(&cur->pcb->locks, &lock_list_e->elem);
+      return 1;
+    }
   }
   return 0;
 };
 
-int sys_lock_acquire(lock_t* lock) { return -1; };
+int sys_lock_acquire(lock_t* lock) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->locks); e != list_end(&cur->pcb->locks); e = list_next(e)) {
+    struct lock_list_elem* curr_lock_e = list_entry(e, struct lock_list_elem, elem);
+    if (curr_lock_e->handle == *lock) {
+      if ((&(curr_lock_e->lock))->holder == cur) {
+        return 0;
+      }
+      lock_acquire(&curr_lock_e->lock);
+      return 1;
+    }
+  }
+  return 0;
+};
 int sys_lock_release(lock_t* lock) { return -1; };
 int sys_sema_init(sema_t* sema, int val) {
-  struct sema_list_elem* sema_list_e = malloc(sizeof(struct sema_list_elem));
-  struct thread* cur = thread_current();
-  *sema = cur->pcb->next_sema_handle++;
-  sema_init(&sema_list_e->sema, val);
-  if (sema_list_e->sema != NULL) {
-    sema_list_e->handle = lock;
-    list_push_back(cur->pcb->sema, &sema_list_e->elem);
-    return 1;
+  if (sema != NULL && val >= 0) {
+    struct sema_list_elem* sema_list_e = malloc(sizeof(struct sema_list_elem));
+    struct thread* cur = thread_current();
+    *sema = cur->pcb->next_sema_handle++;
+    if (sema_list_e != NULL) {
+      sema_init(&sema_list_e->sema, val);
+      sema_list_e->handle = sema;
+      list_push_back(&cur->pcb->semas, &sema_list_e->elem);
+      return 1;
+    }
   }
   return 0;
 };

@@ -122,7 +122,11 @@ static void start_process(void* exec_) {
     // Continue initializing the PCB as normal
     list_init(&t->pcb->children);
     list_init(&t->pcb->fds);
+    list_init(&t->pcb->locks);
+    list_init(&t->pcb->semas);
     t->pcb->next_handle = 2;
+    t->pcb->next_lock_handle = 0;
+    t->pcb->next_sema_handle = 0;
     t->pcb->main_thread = t;
     strlcpy(t->pcb->process_name, t->name, sizeof t->name);
   }

@@ -46,7 +46,7 @@ struct process {
   struct list locks;
   lock_t next_lock_handle;
 
-  struct list sema;
+  struct list semas;
   sema_t next_sema_handle;
 };
 
