@@ -192,40 +192,56 @@ void lock_acquire(struct lock* lock) {
   enum intr_level old_level = intr_disable();
 
   struct thread* curr_thread = thread_current();
-  curr_thread->waiting_for = lock;
+  // struct thread* waiting_on = lock->holder;
 
-  if (lock->holder && curr_thread->effective_priority > lock->holder->effective_priority) {
-    // donate
-    lock->holder->effective_priority = curr_thread->effective_priority;
+  // while (curr_thread->effective_priority > waiting_on->effective_priority) {
+  //   // donate
+  //   waiting_on->effective_priority = curr_thread->effective_priority;
+  //   if (waiting_on == NULL)
+  //     break;
 
-    // nested donation
-    if (lock->holder->waiting_for) {
-      lock->holder->waiting_for->holder->effective_priority = curr_thread->effective_priority;
-    } else {
-      // done donating
-    }
-  }
+  //   curr_thread = waiting_on;
+  //   if (curr_thread->effective_priority > waiting_on->effective_priority)
+  //     break;
+  //   curr_thread->effective_priority = waiting_on->effective_priority;
+  //   if (curr_thread->donee == NULL)
+  //     break;
+  //   waiting_on = curr_thread->donee;
+  // }
 
-  // // prev logic
-  // if (lock->holder &&
-  //     lock->holder->effective_priority < curr_thread->effective_priority) { // DONATE
-  //   list_push_back(&lock->holder->donors, &curr_thread->d_elem);
-  //   // question: do we need to do this?::
-  //   // int potential_new_effective_prio =
-  //   //     find_highest_pri_thread_from(&lock->holder->donors)->effective_priority;
-  //   // if (potential_new_effective_prio > lock->holder->effective_priority) {
-  //   //   list_push_back(&lock->holder->donors, &lock->holder->d_elem);
-  //   //   lock->holder->effective_priority = potential_new_effective_prio;
-  //   // }
+  // if (lock->holder && curr_thread->effective_priority > lock->holder->effective_priority) {
+  //   // donate
   //   lock->holder->effective_priority = curr_thread->effective_priority;
 
-  //   curr_thread->donee = lock->holder;
+  //   // nested donation
+  //   if (lock->holder->waiting_for) {
+  //     lock->holder->waiting_for->holder->effective_priority = curr_thread->effective_priority;
+  //   } else {
+  //     // done donating
+  //   }
   // }
+
+  // prev logic
+  curr_thread->waiting_on = lock->holder;
+  struct thread* w = lock->holder;
+
+  while (w) { // DONATE
+    if (w->effective_priority < curr_thread->effective_priority) {
+      list_push_back(&w->donors, &curr_thread->d_elem);
+      w->effective_priority = curr_thread->effective_priority;
+      curr_thread->donee = w;
+    }
+    curr_thread = w;
+    w = w->waiting_on;
+  }
   sema_down(&lock->semaphore);
 
-  curr_thread->waiting_for = NULL;
-
-  lock->holder = curr_thread;
+  if (thread_current()->donee) {
+    thread_current()->donee = NULL;
+    list_remove(&thread_current()->d_elem);
+  }
+  thread_current()->waiting_on = NULL;
+  lock->holder = thread_current();
   intr_set_level(old_level);
 }
 
@@ -271,19 +287,24 @@ void lock_release(struct lock* lock) {
 
   enum intr_level old_level = intr_disable();
 
-  lock->holder = NULL;
-
   // Loop thru curr_thread's donors to clean-up
   struct thread* curr_thread = thread_current();
   struct list_elem* e;
   for (e = list_begin(&curr_thread->donors); e != list_end(&curr_thread->donors);
        e = list_next(e)) {
     struct thread* donor = list_entry(e, struct thread, d_elem); // note: use d_elem here, not elem
+    // if (donor->waiting_on == thread_current()) {
+    //   donor->donee = NULL;
+    //   list_remove(e);
+    //   donor->waiting_on = NULL;
+    // }
     if (waiting_on_lock(lock, donor)) {
       donor->donee = NULL;
       list_remove(e);
+      donor->waiting_on = NULL;
     }
   }
+  lock->holder = NULL;
 
   // Recompute priority := max(effective priority out of our remaining donors, base prio)
   reset_effective_prio_from_donors(curr_thread);
