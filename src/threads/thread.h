@@ -101,6 +101,7 @@ struct thread {
   int effective_priority;  // Same as BASE_PRIORITY if not donated by another thread
   struct thread* donee;    // Thread that this thread is donating to. NULL if no donee
   struct list donors;
+  struct lock* waiting_for; /* Lock it is waiting for to acquire. Need for nested donation. */
 
 #ifdef USERPROG
   /* Owned by process.c. */

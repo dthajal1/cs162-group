@@ -192,21 +192,39 @@ void lock_acquire(struct lock* lock) {
   enum intr_level old_level = intr_disable();
 
   struct thread* curr_thread = thread_current();
-  if (lock->holder &&
-      lock->holder->effective_priority < curr_thread->effective_priority) { // DONATE
-    list_push_back(&lock->holder->donors, &curr_thread->d_elem);
-    // question: do we need to do this?::
-    // int potential_new_effective_prio =
-    //     find_highest_pri_thread_from(&lock->holder->donors)->effective_priority;
-    // if (potential_new_effective_prio > lock->holder->effective_priority) {
-    //   list_push_back(&lock->holder->donors, &lock->holder->d_elem);
-    //   lock->holder->effective_priority = potential_new_effective_prio;
-    // }
+  curr_thread->waiting_for = lock;
+
+  if (lock->holder && curr_thread->effective_priority > lock->holder->effective_priority) {
+    // donate
     lock->holder->effective_priority = curr_thread->effective_priority;
 
-    curr_thread->donee = lock->holder;
+    // nested donation
+    if (lock->holder->waiting_for) {
+      lock->holder->waiting_for->holder->effective_priority = curr_thread->effective_priority;
+    } else {
+      // done donating
+    }
   }
+
+  // // prev logic
+  // if (lock->holder &&
+  //     lock->holder->effective_priority < curr_thread->effective_priority) { // DONATE
+  //   list_push_back(&lock->holder->donors, &curr_thread->d_elem);
+  //   // question: do we need to do this?::
+  //   // int potential_new_effective_prio =
+  //   //     find_highest_pri_thread_from(&lock->holder->donors)->effective_priority;
+  //   // if (potential_new_effective_prio > lock->holder->effective_priority) {
+  //   //   list_push_back(&lock->holder->donors, &lock->holder->d_elem);
+  //   //   lock->holder->effective_priority = potential_new_effective_prio;
+  //   // }
+  //   lock->holder->effective_priority = curr_thread->effective_priority;
+
+  //   curr_thread->donee = lock->holder;
+  // }
   sema_down(&lock->semaphore);
+
+  curr_thread->waiting_for = NULL;
+
   lock->holder = curr_thread;
   intr_set_level(old_level);
 }
