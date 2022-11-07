@@ -415,12 +415,14 @@ int sys_lock_init(lock_t* lock) {
     struct lock_list_elem* lock_list_e = malloc(sizeof(struct lock_list_elem));
     struct thread* cur = thread_current();
     *lock = cur->pcb->next_lock_handle++;
+    //lock_acquire(&cur->pcb->mutex_list_lock);
     if (lock_list_e != NULL) {
       lock_init(&lock_list_e->lock);
       lock_list_e->handle = *lock;
       list_push_back(&cur->pcb->locks, &lock_list_e->elem);
       return 1;
     }
+    //lock_release(&cur->pcb->mutex_list_lock);
   }
   return 0;
 };
@@ -460,12 +462,14 @@ int sys_sema_init(sema_t* sema, int val) {
     struct sema_list_elem* sema_list_e = malloc(sizeof(struct sema_list_elem));
     struct thread* cur = thread_current();
     *sema = cur->pcb->next_sema_handle++;
+    // lock_acquire(&cur->pcb->sema_list_lock);
     if (sema_list_e != NULL) {
       sema_init(&sema_list_e->sema, val);
       sema_list_e->handle = *sema;
       list_push_back(&cur->pcb->semas, &sema_list_e->elem);
       return 1;
     }
+    // lock_release(&cur->pcb->sema_list_lock);
   }
   return 0;
 };

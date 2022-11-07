@@ -48,6 +48,9 @@ struct process {
 
   struct list semas;
   sema_t next_sema_handle;
+
+  // struct lock mutex_list_lock;
+  // struct lock sema_list_lock;
 };
 
 /* Tracks the completion of a process.
