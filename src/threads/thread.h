@@ -101,7 +101,6 @@ struct thread {
 
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
-  struct thread_wait_status* thread_wait_status;
 };
 
 struct join_status {
