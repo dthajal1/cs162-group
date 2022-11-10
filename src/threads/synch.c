@@ -280,7 +280,6 @@ void rw_lock_release(struct rw_lock* rw_lock, bool reader) {
 struct semaphore_elem {
   struct list_elem elem;      /* List element. */
   struct semaphore semaphore; /* This semaphore. */
-  struct thread* t;
 };
 
 /* Initializes condition variable COND.  A condition variable
