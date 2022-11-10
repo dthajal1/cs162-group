@@ -89,7 +89,6 @@ struct thread {
   char name[16];             /* Name (for debugging purposes). */
   uint8_t* stack;            /* Saved stack pointer. */
   int base_priority;         /* Priority. */
-  int effective_priority;    /* Same as BASE_PRIORITY if not donated by another thread. */
   struct list_elem allelem;  /* List element for all threads list. */
 
   /* Owned by timer.c. */
@@ -98,6 +97,13 @@ struct thread {
 
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
+
+  /* For strict priority scheduling logic. */
+  struct list_elem d_elem; // List element for donors list
+  int effective_priority;  // Same as BASE_PRIORITY if not donated by another thread
+  struct thread* donee;    // Thread that this thread is donating to. NULL if no donee
+  struct list donors;
+  struct thread* waiting_on;
 
   // struct allocated_upage* upage;
   uint8_t* upage;
@@ -125,7 +131,7 @@ struct join_status {
  * use to schedule threads at runtime. */
 enum sched_policy {
   SCHED_FIFO,  // First-in, first-out scheduler
-  SCHED_PRIO,  // Strict-priority scheduler with round-robin tiebreaking
+  SCHED_PRIO,  // Strict-priority scheduler with first-come first-serve tiebreaking
   SCHED_FAIR,  // Implementation-defined fair scheduler
   SCHED_MLFQS, // Multi-level Feedback Queue Scheduler
 };
@@ -143,6 +149,8 @@ void thread_start(void);
 void thread_tick(void);
 void thread_print_stats(void);
 
+bool thread_prio_lesser(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED);
+
 typedef void thread_func(void* aux);
 tid_t thread_create(const char* name, int priority, thread_func*, void*);
 
@@ -155,6 +163,7 @@ const char* thread_name(void);
 
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
+void yield_if_not_highest_prio(void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread* t, void* aux);
@@ -167,5 +176,7 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+
+void reset_effective_prio_from_donors(struct thread* t);
 
 #endif /* threads/thread.h */
