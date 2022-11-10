@@ -192,36 +192,6 @@ void lock_acquire(struct lock* lock) {
   enum intr_level old_level = intr_disable();
 
   struct thread* curr_thread = thread_current();
-  // struct thread* waiting_on = lock->holder;
-
-  // while (curr_thread->effective_priority > waiting_on->effective_priority) {
-  //   // donate
-  //   waiting_on->effective_priority = curr_thread->effective_priority;
-  //   if (waiting_on == NULL)
-  //     break;
-
-  //   curr_thread = waiting_on;
-  //   if (curr_thread->effective_priority > waiting_on->effective_priority)
-  //     break;
-  //   curr_thread->effective_priority = waiting_on->effective_priority;
-  //   if (curr_thread->donee == NULL)
-  //     break;
-  //   waiting_on = curr_thread->donee;
-  // }
-
-  // if (lock->holder && curr_thread->effective_priority > lock->holder->effective_priority) {
-  //   // donate
-  //   lock->holder->effective_priority = curr_thread->effective_priority;
-
-  //   // nested donation
-  //   if (lock->holder->waiting_for) {
-  //     lock->holder->waiting_for->holder->effective_priority = curr_thread->effective_priority;
-  //   } else {
-  //     // done donating
-  //   }
-  // }
-
-  // prev logic
   curr_thread->waiting_on = lock->holder;
   struct thread* w = lock->holder;
 
@@ -237,8 +207,9 @@ void lock_acquire(struct lock* lock) {
   sema_down(&lock->semaphore);
 
   if (thread_current()->donee) {
-    thread_current()->donee = NULL;
     list_remove(&thread_current()->d_elem);
+    reset_effective_prio_from_donors(thread_current()->donee);
+    thread_current()->donee = NULL;
   }
   thread_current()->waiting_on = NULL;
   lock->holder = thread_current();
@@ -293,14 +264,9 @@ void lock_release(struct lock* lock) {
   for (e = list_begin(&curr_thread->donors); e != list_end(&curr_thread->donors);
        e = list_next(e)) {
     struct thread* donor = list_entry(e, struct thread, d_elem); // note: use d_elem here, not elem
-    // if (donor->waiting_on == thread_current()) {
-    //   donor->donee = NULL;
-    //   list_remove(e);
-    //   donor->waiting_on = NULL;
-    // }
     if (waiting_on_lock(lock, donor)) {
       donor->donee = NULL;
-      list_remove(e);
+      list_remove(&donor->d_elem);
       donor->waiting_on = NULL;
     }
   }
@@ -311,9 +277,8 @@ void lock_release(struct lock* lock) {
 
   sema_up(&lock->semaphore);
 
-  // QUESTION: isn't this already done inside sema_up?
-  // // Upon updating priorities, yield this thread if we're no longer highest prio
-  // yield_if_not_highest_prio();
+  // Upon updating priorities, yield this thread if we're no longer highest prio
+  yield_if_not_highest_prio();
 
   intr_set_level(old_level);
 }
