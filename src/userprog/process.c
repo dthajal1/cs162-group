@@ -296,6 +296,20 @@ void process_exit(void) {
     sys_close(fd->handle);
   }
 
+  while (!list_empty(&cur->pcb->locks)) {
+    e = list_begin(&cur->pcb->locks);
+    struct lock_list_elem* ulock = list_entry(e, struct lock_list_elem, elem);
+    list_remove(e);
+    free(ulock);
+  }
+
+  while (!list_empty(&cur->pcb->semas)) {
+    e = list_begin(&cur->pcb->semas);
+    struct sema_list_elem* usema = list_entry(e, struct sema_list_elem, elem);
+    list_remove(e);
+    free(usema);
+  }
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pcb->pagedir;
