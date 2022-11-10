@@ -277,9 +277,6 @@ void lock_release(struct lock* lock) {
 
   sema_up(&lock->semaphore);
 
-  // Upon updating priorities, yield this thread if we're no longer highest prio
-  yield_if_not_highest_prio();
-
   intr_set_level(old_level);
 }
 
