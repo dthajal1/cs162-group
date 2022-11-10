@@ -16,6 +16,10 @@
    the TID of the main thread of the process */
 typedef tid_t pid_t;
 
+/* User level lock ids */
+typedef char lock_t;
+typedef char sema_t;
+
 /* Thread functions (Project 2: Multithreading) */
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
@@ -27,16 +31,29 @@ typedef void (*stub_fun)(pthread_fun, void*);
    of the process, which is `special`. */
 struct process {
   /* Owned by process.c. */
+  bool process_exited;
+  int num_threads;
+
+  struct lock exit_lock;
+  struct condition exiting;
+
   struct wait_status* wait_status; /* This process's completion status. */
   struct list children;            /* Completion status of children. */
-  uint32_t* pagedir;               /* Page directory. */
-  char process_name[16];           /* Name of the main thread */
-  struct file* bin_file;           /* Executable. */
-  struct thread* main_thread;      /* Pointer to main thread */
+  struct list children_threads;
+  uint32_t* pagedir;          /* Page directory. */
+  char process_name[16];      /* Name of the main thread */
+  struct file* bin_file;      /* Executable. */
+  struct thread* main_thread; /* Pointer to main thread */
 
   /* Owned by syscall.c. */
   struct list fds; /* List of file descriptors. */
   int next_handle; /* Next handle value. */
+
+  struct list locks;
+  lock_t next_lock_handle;
+
+  struct list semas;
+  sema_t next_sema_handle;
 };
 
 /* Tracks the completion of a process.
@@ -58,6 +75,20 @@ struct file_descriptor {
   struct list_elem elem; /* List element. */
   struct file* file;     /* File. */
   int handle;            /* File handle. */
+};
+
+/* lock element within the list */
+struct lock_list_elem {
+  struct list_elem elem;
+  struct lock lock;
+  lock_t handle;
+};
+
+/* semaphore element within the list */
+struct sema_list_elem {
+  struct list_elem elem;
+  struct semaphore sema;
+  sema_t handle;
 };
 
 void userprog_init(void);

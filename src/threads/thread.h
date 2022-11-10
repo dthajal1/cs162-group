@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/fixed-point.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -82,6 +83,7 @@ typedef int tid_t;
    blocked state is on a semaphore wait list. */
 struct thread {
   /* Owned by thread.c. */
+  struct join_status* join_status;
   tid_t tid;                 /* Thread identifier. */
   enum thread_status status; /* Thread state. */
   char name[16];             /* Name (for debugging purposes). */
@@ -103,6 +105,9 @@ struct thread {
   struct list donors;
   struct thread* waiting_on;
 
+  // struct allocated_upage* upage;
+  uint8_t* upage;
+
 #ifdef USERPROG
   /* Owned by process.c. */
   struct process* pcb; /* Process control block if this thread is a userprog */
@@ -110,6 +115,16 @@ struct thread {
 
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
+};
+
+struct join_status {
+  struct list_elem elem;
+  struct lock lock;
+  int ref_cnt;
+
+  tid_t tid;
+  int exit_code;
+  struct semaphore dead;
 };
 
 /* Types of scheduler that the user can request the kernel
