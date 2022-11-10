@@ -102,7 +102,6 @@ struct thread {
   struct thread* donee;    // Thread that this thread is donating to. NULL if no donee
   struct list donors;
   struct thread* waiting_on;
-  struct lock* waiting_for; /* Lock it is waiting for to acquire. Need for nested donation. */
 
 #ifdef USERPROG
   /* Owned by process.c. */

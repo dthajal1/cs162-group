@@ -437,6 +437,13 @@ void cond_wait(struct condition* cond, struct lock* lock) {
   lock_acquire(lock);
 }
 
+/* Helper fxn to compare thread priority */
+bool sema_prio_lesser(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED) {
+  struct semaphore_elem* s = list_entry(a, struct semaphore_elem, elem);
+  struct semaphore_elem* t = list_entry(b, struct semaphore_elem, elem);
+  return (s->thread->effective_priority < t->thread->effective_priority);
+}
+
 /* If any threads are waiting on COND (protected by LOCK), then
    this function signals one of them to wake up from its wait.
    LOCK must be held before calling this function.
@@ -452,7 +459,7 @@ void cond_signal(struct condition* cond, struct lock* lock UNUSED) {
 
   if (!list_empty(&cond->waiters)) {
     // Pop waiters by effective priority
-    struct list_elem* e = list_max(&cond->waiters, thread_prio_lesser, NULL);
+    struct list_elem* e = list_max(&cond->waiters, sema_prio_lesser, NULL);
     struct semaphore_elem* next_semelem = list_entry(e, struct semaphore_elem, elem);
     list_remove(&next_semelem->elem);
     sema_up(&next_semelem->semaphore);

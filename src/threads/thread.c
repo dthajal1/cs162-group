@@ -326,6 +326,9 @@ void thread_exit(void) {
   // Remove thread from all threads list
   list_remove(&curr_thread->allelem);
 
+  // Remove waiting_on thread
+  curr_thread->waiting_on = NULL;
+
   // If we have a donee, remove myself and recompute donee's effective prio
   if (curr_thread->donee) {
     list_remove(&curr_thread->d_elem);
@@ -495,7 +498,7 @@ static void init_thread(struct thread* t, const char* name, int priority) {
   t->magic = THREAD_MAGIC;
   list_init(&t->donors);
   t->donee = NULL;
-  t->waiting_for = NULL;
+  t->waiting_on = NULL;
   t->wait_ticks = 0;
 
   old_level = intr_disable();
