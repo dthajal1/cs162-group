@@ -38,15 +38,19 @@ static void syscall_handler(struct intr_frame* f) {
 
   /* Table of system calls. */
   static const struct syscall syscall_table[] = {
-      {0, (syscall_function*)sys_halt},      {1, (syscall_function*)sys_exit},
-      {1, (syscall_function*)sys_exec},      {1, (syscall_function*)sys_wait},
-      {2, (syscall_function*)sys_create},    {1, (syscall_function*)sys_remove},
-      {1, (syscall_function*)sys_open},      {1, (syscall_function*)sys_filesize},
-      {3, (syscall_function*)sys_read},      {3, (syscall_function*)sys_write},
-      {2, (syscall_function*)sys_seek},      {1, (syscall_function*)sys_tell},
-      {1, (syscall_function*)sys_close},     {1, (syscall_function*)sys_practice},
-      {1, (syscall_function*)sys_compute_e},
-  };
+      {0, (syscall_function*)sys_halt},         {1, (syscall_function*)sys_exit},
+      {1, (syscall_function*)sys_exec},         {1, (syscall_function*)sys_wait},
+      {2, (syscall_function*)sys_create},       {1, (syscall_function*)sys_remove},
+      {1, (syscall_function*)sys_open},         {1, (syscall_function*)sys_filesize},
+      {3, (syscall_function*)sys_read},         {3, (syscall_function*)sys_write},
+      {2, (syscall_function*)sys_seek},         {1, (syscall_function*)sys_tell},
+      {1, (syscall_function*)sys_close},        {1, (syscall_function*)sys_practice},
+      {1, (syscall_function*)sys_compute_e},    {3, (syscall_function*)sys_pt_create},
+      {0, (syscall_function*)sys_pt_exit},      {1, (syscall_function*)sys_pt_join},
+      {1, (syscall_function*)sys_lock_init},    {1, (syscall_function*)sys_lock_acquire},
+      {1, (syscall_function*)sys_lock_release}, {2, (syscall_function*)sys_sema_init},
+      {1, (syscall_function*)sys_sema_down},    {1, (syscall_function*)sys_sema_up},
+      {0, (syscall_function*)sys_get_tid}};
 
   const struct syscall* sc;
   unsigned call_nr;
@@ -198,23 +202,25 @@ int sys_remove(const char* ufile) {
 /* Open system call. */
 int sys_open(const char* ufile) {
   char* kfile = copy_in_string(ufile);
-  struct file_descriptor* fd;
+  struct file_descriptor* fd; // task 1: CREATE NEW STRUCTURE FOR LOCK IN PROCESSh
   int handle = -1;
 
-  fd = malloc(sizeof *fd);
+  fd = malloc(sizeof *fd); // task 2: malloc our lock structure
   if (fd != NULL) {
-    lock_acquire(&fs_lock);
-    fd->file = filesys_open(kfile);
+    lock_acquire(&fs_lock); // ignore for now
+    fd->file = filesys_open(
+        kfile); // task 3: change to more than 1 line, malloc kernal lock (struct lock) and init with lock_init and then also assocaite it with our locklist elem thing
     if (fd->file != NULL) {
       struct thread* cur = thread_current();
       handle = fd->handle = cur->pcb->next_handle++;
-      list_push_front(&cur->pcb->fds, &fd->elem);
+      list_push_front(&cur->pcb->fds,
+                      &fd->elem); // task4: basically the same except change to lock handle
     } else
       free(fd);
-    lock_release(&fs_lock);
+    lock_release(&fs_lock); // ignore
   }
 
-  palloc_free_page(kfile);
+  palloc_free_page(kfile); // ignore
   return handle;
 }
 
@@ -386,3 +392,105 @@ int sys_practice(int input) { return input + 1; }
 
 /* Compute e and return a float cast to an int */
 int sys_compute_e(int n) { return sys_sum_to_e(n); }
+
+int sys_pt_create(stub_fun sfun, pthread_fun tfun, void* arg) {
+  tid_t tid;
+  tid = pthread_execute(sfun, tfun, arg);
+  return tid;
+};
+
+int sys_pt_exit(void) {
+  struct thread* cur = thread_current();
+  if (cur->pcb->main_thread != cur) {
+    pthread_exit();
+  } else {
+    pthread_exit_main();
+  }
+  NOT_REACHED();
+};
+
+int sys_pt_join(tid_t tid) { return pthread_join(tid); };
+int sys_lock_init(lock_t* lock) {
+  if (lock != NULL) {
+    struct lock_list_elem* lock_list_e = malloc(sizeof(struct lock_list_elem));
+    struct thread* cur = thread_current();
+    *lock = cur->pcb->next_lock_handle++;
+    if (lock_list_e != NULL) {
+      lock_init(&lock_list_e->lock);
+      lock_list_e->handle = *lock;
+      list_push_back(&cur->pcb->locks, &lock_list_e->elem);
+      return 1;
+    }
+  }
+  return 0;
+};
+
+int sys_lock_acquire(lock_t* lock) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->locks); e != list_end(&cur->pcb->locks); e = list_next(e)) {
+    struct lock_list_elem* curr_lock_e = list_entry(e, struct lock_list_elem, elem);
+    if (curr_lock_e->handle == *lock) {
+      if ((&(curr_lock_e->lock))->holder == cur) {
+        return 0;
+      }
+      lock_acquire(&curr_lock_e->lock);
+      return 1;
+    }
+  }
+  return 0;
+};
+int sys_lock_release(lock_t* lock) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->locks); e != list_end(&cur->pcb->locks); e = list_next(e)) {
+    struct lock_list_elem* curr_lock_e = list_entry(e, struct lock_list_elem, elem);
+    if (curr_lock_e->handle == *lock) {
+      if ((&(curr_lock_e->lock))->holder != cur) {
+        return 0;
+      }
+      lock_release(&curr_lock_e->lock);
+      return 1;
+    }
+  }
+  return 0;
+};
+int sys_sema_init(sema_t* sema, int val) {
+  if (sema != NULL && val >= 0) {
+    struct sema_list_elem* sema_list_e = malloc(sizeof(struct sema_list_elem));
+    struct thread* cur = thread_current();
+    *sema = cur->pcb->next_sema_handle++;
+    if (sema_list_e != NULL) {
+      sema_init(&sema_list_e->sema, val);
+      sema_list_e->handle = *sema;
+      list_push_back(&cur->pcb->semas, &sema_list_e->elem);
+      return 1;
+    }
+  }
+  return 0;
+};
+int sys_sema_down(sema_t* sema) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->semas); e != list_end(&cur->pcb->semas); e = list_next(e)) {
+    struct sema_list_elem* curr_sema_e = list_entry(e, struct sema_list_elem, elem);
+    if (curr_sema_e->handle == *sema) {
+      sema_down(&curr_sema_e->sema);
+      return 1;
+    }
+  }
+  return 0;
+};
+int sys_sema_up(sema_t* sema) {
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+  for (e = list_begin(&cur->pcb->semas); e != list_end(&cur->pcb->semas); e = list_next(e)) {
+    struct sema_list_elem* curr_sema_e = list_entry(e, struct sema_list_elem, elem);
+    if (curr_sema_e->handle == *sema) {
+      sema_up(&curr_sema_e->sema);
+      return 1;
+    }
+  }
+  return 0;
+};
+int sys_get_tid(void) { return thread_current()->tid; };

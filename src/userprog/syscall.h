@@ -19,6 +19,16 @@ int sys_tell(int handle);
 int sys_close(int handle);
 int sys_practice(int input);
 int sys_compute_e(int n);
+int sys_pt_create(stub_fun sfun, pthread_fun tfun, void* arg);
+int sys_pt_exit(void);
+int sys_pt_join(tid_t tid);
+int sys_lock_init(lock_t* lock);
+int sys_lock_acquire(lock_t* lock);
+int sys_lock_release(lock_t* lock);
+int sys_sema_init(sema_t* sema, int val);
+int sys_sema_down(sema_t* sema);
+int sys_sema_up(sema_t* sema);
+int sys_get_tid(void);
 
 void syscall_init(void);
 void safe_file_close(struct file* file);
