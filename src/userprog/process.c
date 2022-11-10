@@ -1011,17 +1011,6 @@ void pthread_exit_main(void) { // wake up all waiters
     }
     next = list_begin(&t->pcb->children_threads);
   }
-  /* for (struct list_elem* e = list_begin(&t->pcb->children_threads); e != list_end(&t->pcb->children_threads); e = list_next(e)) {
-    struct join_status* js = list_entry(e, struct join_status, elem);
-    pthread_join(js->tid);
-  } */
-
-  /* for (struct list_elem *e = list_begin(&t->pcb->children_threads); e != list_end(&t->pcb->children_threads); e = next) {
-    struct join_status* js = list_entry(e, struct join_status, elem);
-    next = list_remove(e);
-    release_child_thread(js);
-  } */
-  // uint8_t* upage = t->upage->upage;
   palloc_free_page(pagedir_get_page(t->pcb->pagedir, t->upage));
   pagedir_clear_page(t->pcb->pagedir, t->upage);
 
