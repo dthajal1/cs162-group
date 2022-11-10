@@ -31,6 +31,12 @@ typedef void (*stub_fun)(pthread_fun, void*);
    of the process, which is `special`. */
 struct process {
   /* Owned by process.c. */
+  bool process_exited;
+  int num_threads;
+
+  struct lock exit_lock;
+  struct condition exiting;
+
   struct wait_status* wait_status; /* This process's completion status. */
   struct list children;            /* Completion status of children. */
   struct list children_threads;
@@ -48,6 +54,8 @@ struct process {
 
   struct list sema;
   int next_sema_handle;
+
+  struct list allocated_upages;
 };
 
 /* Tracks the completion of a process.
@@ -70,6 +78,12 @@ struct file_descriptor {
   struct file* file;     /* File. */
   int handle;            /* File handle. */
 };
+
+/* struct allocated_upage {
+  struct list_elem elem;
+  uint8_t* upage;
+  bool free;
+}; */
 
 void userprog_init(void);
 
