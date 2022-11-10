@@ -127,11 +127,14 @@ static void start_process(void* exec_) {
     // Continue initializing the PCB as normal
     list_init(&t->pcb->children);
     list_init(&t->pcb->children_threads);
-    list_init(&t->pcb->allocated_upages);
     list_init(&t->pcb->fds);
     cond_init(&t->pcb->exiting);
     lock_init(&t->pcb->exit_lock);
+    list_init(&t->pcb->locks);
+    list_init(&t->pcb->semas);
     t->pcb->next_handle = 2;
+    t->pcb->next_lock_handle = 0;
+    t->pcb->next_sema_handle = 0;
     t->pcb->main_thread = t;
     t->pcb->process_exited = false;
     strlcpy(t->pcb->process_name, t->name, sizeof t->name);
