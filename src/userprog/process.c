@@ -763,29 +763,6 @@ static bool setup_stack(const char* cmd_line, void** esp) {
 static bool install_page(void* upage, void* kpage, bool writable) {
   struct thread* t = thread_current();
 
-  /* if (pagedir_get_page(t->pcb->pagedir, upage) == NULL && pagedir_set_page(t->pcb->pagedir, upage, kpage, writable)) {
-
-    for (struct list_elem* e = list_begin(&t->pcb->allocated_upages); e != list_end(&t->pcb->allocated_upages); e = list_next(e)) {
-      struct allocated_upage* curr_upage = list_entry(e, struct allocated_upage, elem);
-      if (upage == curr_upage->upage) {
-        curr_upage->free = false;
-        t->upage = curr_upage;
-        return true;
-      }
-    }
-
-    struct allocated_upage* new_upage = malloc(sizeof(struct allocated_upage));
-    if (new_upage == NULL) {
-      return false;
-    }
-
-    new_upage->free = false;
-    new_upage->upage = upage;
-    list_push_back(&t->pcb->allocated_upages, &new_upage->elem);
-    t->upage = new_upage;
-    return true;
-  }
-  return false; */
   if (pagedir_get_page(t->pcb->pagedir, upage) == NULL &&
       pagedir_set_page(t->pcb->pagedir, upage, kpage, writable)) {
     t->upage = upage;
@@ -806,20 +783,6 @@ static uint8_t* find_free_upage() {
   }
 
   return upage;
-  /* struct thread* t = thread_current();
-  uint8_t* expected_upage = ((uint8_t*)PHYS_BASE) - PGSIZE;
-
-  for (struct list_elem* e = list_begin(&t->pcb->allocated_upages); e != list_end(&t->pcb->allocated_upages); e = list_next(e)) {
-    if (expected_upage < 0) {
-      return NULL;
-    }
-    struct allocated_upage* aupage = list_entry(e, struct allocated_upage, elem);
-    if (aupage->free) {
-      return aupage->upage;
-    }
-    expected_upage -= PGSIZE;
-  }
-  return expected_upage; */
 }
 
 /* Returns true if t is the main thread of the process p */
