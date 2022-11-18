@@ -23,15 +23,15 @@ intr_entry:
 	pushl %fs
 	pushl %gs
 	pushal
-	subl $108, %esp
-	fsave (%esp)
+   subl $108, %esp # decrease stack pointer by 108
+	fsave 0(%esp) # save stack pointer to memory
 
 	/* Set up kernel environment. */
 	cld			/* String instructions go upward. */
 	mov $SEL_KDSEG, %eax	/* Initialize segment registers. */
 	mov %eax, %ds
 	mov %eax, %es
-	leal 164(%esp), %ebp	/* Set up frame pointer. */
+	leal 56(%esp), %ebp	/* Set up frame pointer. */
 
 	/* Call interrupt handler. */
 	pushl %esp
@@ -52,8 +52,8 @@ intr_entry:
 .func intr_exit
 intr_exit:
 	/* Restore caller's registers. */
-	frstor (%esp)
-	addl $108, %esp
+   frstor 0(%esp) # restore stack pointer to memory
+	addl $108, %esp # increase stack pointer by 108
 	popal
 	popl %gs
 	popl %fs

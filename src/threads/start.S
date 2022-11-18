@@ -143,6 +143,8 @@ start:
 #    PG (Paging): turns on paging.
 #    WP (Write Protect): if unset, ring 0 code ignores
 #       write-protect bits in page tables (!).
+#    EM (Emulation): forces floating-point instructions to trap.
+#       We don't (yet) support floating point.
 
 	movl %cr0, %eax
 	orl $CR0_PE | CR0_PG | CR0_WP, %eax
@@ -199,3 +201,4 @@ gdtdesc:
 .globl init_ram_pages
 init_ram_pages:
 	.long 0
+

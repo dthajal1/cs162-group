@@ -27,8 +27,8 @@ switch_threads:
 	pushl %ebp
 	pushl %esi
 	pushl %edi
-	subl $108, %esp
-	fsave (%esp)
+	subl $108, %esp # decrease stack pointer by 108
+	fsave 0(%esp) # save stack pointer to memory
 
 	# Get offsetof (struct thread, stack).
 .globl thread_stack_ofs
@@ -43,13 +43,13 @@ switch_threads:
 	movl (%ecx,%edx,1), %esp
 
 	# Restore caller's register state.
-	frstor (%esp)
-	addl $108, %esp
+	frstor 0(%esp) # restore stack pointer to memory
+	addl $108, %esp # increase stack pointer by 108
 	popl %edi
 	popl %esi
 	popl %ebp
 	popl %ebx
-        ret
+    ret
 .endfunc
 
 .globl switch_entry

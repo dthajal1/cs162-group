@@ -1,496 +1,297 @@
+#include "devices/shutdown.h"
 #include "userprog/syscall.h"
 #include <stdio.h>
-#include <float.h>
-#include <string.h>
+#include <stdlib.h>
 #include <syscall-nr.h>
-#include "devices/input.h"
-#include "devices/shutdown.h"
-#include "filesys/filesys.h"
-#include "filesys/file.h"
 #include "threads/interrupt.h"
-#include "threads/malloc.h"
-#include "threads/palloc.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
 #include "userprog/process.h"
+
+#include "lib/kernel/stdio.h"
+#include "devices/input.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 
 static void syscall_handler(struct intr_frame*);
-static void copy_in(void*, const void*, size_t);
 
-/* Serializes file system operations. */
-static struct lock fs_lock;
-
-void syscall_init(void) {
-  intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&fs_lock);
-}
-
-/* System call handler. */
-static void syscall_handler(struct intr_frame* f) {
-  typedef int syscall_function(int, int, int);
-
-  /* A system call. */
-  struct syscall {
-    size_t arg_cnt;         /* Number of arguments. */
-    syscall_function* func; /* Implementation. */
-  };
-
-  /* Table of system calls. */
-  static const struct syscall syscall_table[] = {
-      {0, (syscall_function*)sys_halt},         {1, (syscall_function*)sys_exit},
-      {1, (syscall_function*)sys_exec},         {1, (syscall_function*)sys_wait},
-      {2, (syscall_function*)sys_create},       {1, (syscall_function*)sys_remove},
-      {1, (syscall_function*)sys_open},         {1, (syscall_function*)sys_filesize},
-      {3, (syscall_function*)sys_read},         {3, (syscall_function*)sys_write},
-      {2, (syscall_function*)sys_seek},         {1, (syscall_function*)sys_tell},
-      {1, (syscall_function*)sys_close},        {1, (syscall_function*)sys_practice},
-      {1, (syscall_function*)sys_compute_e},    {3, (syscall_function*)sys_pt_create},
-      {0, (syscall_function*)sys_pt_exit},      {1, (syscall_function*)sys_pt_join},
-      {1, (syscall_function*)sys_lock_init},    {1, (syscall_function*)sys_lock_acquire},
-      {1, (syscall_function*)sys_lock_release}, {2, (syscall_function*)sys_sema_init},
-      {1, (syscall_function*)sys_sema_down},    {1, (syscall_function*)sys_sema_up},
-      {0, (syscall_function*)sys_get_tid}};
-
-  const struct syscall* sc;
-  unsigned call_nr;
-  int args[3];
-
-  /* Get the system call. */
-  copy_in(&call_nr, f->esp, sizeof call_nr);
-  if (call_nr >= sizeof syscall_table / sizeof *syscall_table)
-    process_exit();
-  sc = syscall_table + call_nr;
-
-  if (sc->func == NULL)
-    process_exit();
-
-  /* Get the system call arguments. */
-  ASSERT(sc->arg_cnt <= sizeof args / sizeof *args);
-  memset(args, 0, sizeof args);
-  copy_in(args, (uint32_t*)f->esp + 1, sizeof *args * sc->arg_cnt);
-
-  /* Execute the system call,
-     and set the return value. */
-  f->eax = sc->func(args[0], args[1], args[2]);
-}
-
-/* Closes a file safely */
-void safe_file_close(struct file* file) {
-  lock_acquire(&fs_lock);
-  file_close(file);
-  lock_release(&fs_lock);
-}
-
-/* Returns true if UADDR is a valid, mapped user address,
-   false otherwise. */
-static bool verify_user(const void* uaddr) {
-  return (uaddr < PHYS_BASE && pagedir_get_page(thread_current()->pcb->pagedir, uaddr) != NULL);
-}
-
-/* Copies a byte from user address USRC to kernel address DST.
-   USRC must be below PHYS_BASE.
-   Returns true if successful, false if a segfault occurred. */
-static inline bool get_user(uint8_t* dst, const uint8_t* usrc) {
-  int eax;
-  asm("movl $1f, %%eax; movb %2, %%al; movb %%al, %0; 1:" : "=m"(*dst), "=&a"(eax) : "m"(*usrc));
-  return eax != 0;
-}
-
-/* Writes BYTE to user address UDST.
-   UDST must be below PHYS_BASE.
-   Returns true if successful, false if a segfault occurred. */
-static inline bool put_user(uint8_t* udst, uint8_t byte) {
-  int eax;
-  asm("movl $1f, %%eax; movb %b2, %0; 1:" : "=m"(*udst), "=&a"(eax) : "q"(byte));
-  return eax != 0;
-}
-
-/* Copies SIZE bytes from user address USRC to kernel address
-   DST.
-   Call process_exit() if any of the user accesses are invalid. */
-static void copy_in(void* dst_, const void* usrc_, size_t size) {
-  uint8_t* dst = dst_;
-  const uint8_t* usrc = usrc_;
-
-  for (; size > 0; size--, dst++, usrc++)
-    if (usrc >= (uint8_t*)PHYS_BASE || !get_user(dst, usrc))
-      process_exit();
-}
-
-/* Creates a copy of user string US in kernel memory
-   and returns it as a page that must be freed with
-   palloc_free_page().
-   Truncates the string at PGSIZE bytes in size.
-   Call process_exit() if any of the user accesses are invalid. */
-static char* copy_in_string(const char* us) {
-  char* ks;
-  size_t length;
-
-  ks = palloc_get_page(0);
-  if (ks == NULL)
-    process_exit();
-
-  for (length = 0; length < PGSIZE; length++) {
-    if (us >= (char*)PHYS_BASE || !get_user(ks + length, us++)) {
-      palloc_free_page(ks);
-      process_exit();
-    }
-
-    if (ks[length] == '\0')
-      return ks;
-  }
-  ks[PGSIZE - 1] = '\0';
-  return ks;
-}
-
-/* Halt system call. */
-int sys_halt(void) { shutdown_power_off(); }
-
-/* Exit system call. */
-int sys_exit(int exit_code) {
-  thread_current()->pcb->wait_status->exit_code = exit_code;
-  process_exit();
-  NOT_REACHED();
-}
-
-/* Exec system call. */
-int sys_exec(const char* ufile) {
-  pid_t tid;
-  char* kfile = copy_in_string(ufile);
-
-  lock_acquire(&fs_lock);
-  tid = process_execute(kfile);
-  lock_release(&fs_lock);
-
-  palloc_free_page(kfile);
-
-  return tid;
-}
-
-/* Wait system call. */
-int sys_wait(pid_t child) { return process_wait(child); }
-
-/* Create system call. */
-int sys_create(const char* ufile, unsigned initial_size) {
-  char* kfile = copy_in_string(ufile);
-  bool ok;
-
-  lock_acquire(&fs_lock);
-  ok = filesys_create(kfile, initial_size);
-  lock_release(&fs_lock);
-
-  palloc_free_page(kfile);
-
-  return ok;
-}
-
-/* Remove system call. */
-int sys_remove(const char* ufile) {
-  char* kfile = copy_in_string(ufile);
-  bool ok;
-
-  lock_acquire(&fs_lock);
-  ok = filesys_remove(kfile);
-  lock_release(&fs_lock);
-
-  palloc_free_page(kfile);
-
-  return ok;
-}
-
-/* Open system call. */
-int sys_open(const char* ufile) {
-  char* kfile = copy_in_string(ufile);
-  struct file_descriptor* fd; // task 1: CREATE NEW STRUCTURE FOR LOCK IN PROCESSh
-  int handle = -1;
-
-  fd = malloc(sizeof *fd); // task 2: malloc our lock structure
-  if (fd != NULL) {
-    lock_acquire(&fs_lock); // ignore for now
-    fd->file = filesys_open(
-        kfile); // task 3: change to more than 1 line, malloc kernal lock (struct lock) and init with lock_init and then also assocaite it with our locklist elem thing
-    if (fd->file != NULL) {
-      struct thread* cur = thread_current();
-      handle = fd->handle = cur->pcb->next_handle++;
-      list_push_front(&cur->pcb->fds,
-                      &fd->elem); // task4: basically the same except change to lock handle
-    } else
-      free(fd);
-    lock_release(&fs_lock); // ignore
-  }
-
-  palloc_free_page(kfile); // ignore
-  return handle;
-}
-
-/* Returns the file descriptor associated with the given handle.
-   Terminates the process if HANDLE is not associated with an
-   open file. */
-static struct file_descriptor* lookup_fd(int handle) {
-  struct thread* cur = thread_current();
-  struct list_elem* e;
-
-  for (e = list_begin(&cur->pcb->fds); e != list_end(&cur->pcb->fds); e = list_next(e)) {
-    struct file_descriptor* fd;
-    fd = list_entry(e, struct file_descriptor, elem);
-    if (fd->handle == handle)
-      return fd;
-  }
-
-  process_exit();
-  NOT_REACHED();
-}
-
-/* Filesize system call. */
-int sys_filesize(int handle) {
-  struct file_descriptor* fd = lookup_fd(handle);
-  int size;
-
-  lock_acquire(&fs_lock);
-  size = file_length(fd->file);
-  lock_release(&fs_lock);
-
-  return size;
-}
-
-/* Read system call. */
-int sys_read(int handle, void* udst_, unsigned size) {
-  uint8_t* udst = udst_;
-  struct file_descriptor* fd;
-  int bytes_read = 0;
-
-  /* Handle keyboard reads. */
-  if (handle == STDIN_FILENO) {
-    for (bytes_read = 0; (size_t)bytes_read < size; bytes_read++)
-      if (udst >= (uint8_t*)PHYS_BASE || !put_user(udst++, input_getc()))
-        process_exit();
-    return bytes_read;
-  }
-
-  /* Handle all other reads. */
-  fd = lookup_fd(handle);
-  lock_acquire(&fs_lock);
-  while (size > 0) {
-    /* How much to read into this page? */
-    size_t page_left = PGSIZE - pg_ofs(udst);
-    size_t read_amt = size < page_left ? size : page_left;
-    off_t retval;
-
-    /* Check that touching this page is okay. */
-    if (!verify_user(udst)) {
-      lock_release(&fs_lock);
-      process_exit();
-    }
-
-    /* Read from file into page. */
-    retval = file_read(fd->file, udst, read_amt);
-    if (retval < 0) {
-      if (bytes_read == 0)
-        bytes_read = -1;
-      break;
-    }
-    bytes_read += retval;
-
-    /* If it was a short read we're done. */
-    if (retval != (off_t)read_amt)
-      break;
-
-    /* Advance. */
-    udst += retval;
-    size -= retval;
-  }
-  lock_release(&fs_lock);
-
-  return bytes_read;
-}
-
-/* Write system call. */
-int sys_write(int handle, void* usrc_, unsigned size) {
-  uint8_t* usrc = usrc_;
-  struct file_descriptor* fd = NULL;
-  int bytes_written = 0;
-
-  /* Lookup up file descriptor. */
-  if (handle != STDOUT_FILENO)
-    fd = lookup_fd(handle);
-
-  lock_acquire(&fs_lock);
-  while (size > 0) {
-    /* How much bytes to write to this page? */
-    size_t page_left = PGSIZE - pg_ofs(usrc);
-    size_t write_amt = size < page_left ? size : page_left;
-    off_t retval;
-
-    /* Check that we can touch this user page. */
-    if (!verify_user(usrc)) {
-      lock_release(&fs_lock);
-      process_exit();
-    }
-
-    /* Do the write. */
-    if (handle == STDOUT_FILENO) {
-      putbuf(usrc, write_amt);
-      retval = write_amt;
-    } else
-      retval = file_write(fd->file, usrc, write_amt);
-    if (retval < 0) {
-      if (bytes_written == 0)
-        bytes_written = -1;
-      break;
-    }
-    bytes_written += retval;
-
-    /* If it was a short write we're done. */
-    if (retval != (off_t)write_amt)
-      break;
-
-    /* Advance. */
-    usrc += retval;
-    size -= retval;
-  }
-  lock_release(&fs_lock);
-
-  return bytes_written;
-}
-
-/* Seek system call. */
-int sys_seek(int handle, unsigned position) {
-  struct file_descriptor* fd = lookup_fd(handle);
-
-  lock_acquire(&fs_lock);
-  if ((off_t)position >= 0)
-    file_seek(fd->file, position);
-  lock_release(&fs_lock);
-
-  return 0;
-}
-
-/* Tell system call. */
-int sys_tell(int handle) {
-  struct file_descriptor* fd = lookup_fd(handle);
-  unsigned position;
-
-  lock_acquire(&fs_lock);
-  position = file_tell(fd->file);
-  lock_release(&fs_lock);
-
-  return position;
-}
-
-/* Close system call. */
-int sys_close(int handle) {
-  struct file_descriptor* fd = lookup_fd(handle);
-  safe_file_close(fd->file);
-  list_remove(&fd->elem);
-  free(fd);
-  return 0;
-}
-
-/* Practice system call. */
-int sys_practice(int input) { return input + 1; }
-
-/* Compute e and return a float cast to an int */
-int sys_compute_e(int n) { return sys_sum_to_e(n); }
-
-int sys_pt_create(stub_fun sfun, pthread_fun tfun, void* arg) {
-  tid_t tid;
-  tid = pthread_execute(sfun, tfun, arg);
-  return tid;
-};
-
-int sys_pt_exit(void) {
-  struct thread* cur = thread_current();
-  if (cur->pcb->main_thread != cur) {
-    pthread_exit();
-  } else {
-    pthread_exit_main();
-  }
-  NOT_REACHED();
-};
-
-int sys_pt_join(tid_t tid) { return pthread_join(tid); };
-int sys_lock_init(lock_t* lock) {
-  if (lock != NULL) {
-    struct lock_list_elem* lock_list_e = malloc(sizeof(struct lock_list_elem));
-    struct thread* cur = thread_current();
-    *lock = cur->pcb->next_lock_handle++;
-    if (lock_list_e != NULL) {
-      lock_init(&lock_list_e->lock);
-      lock_list_e->handle = *lock;
-      list_push_back(&cur->pcb->locks, &lock_list_e->elem);
-      return 1;
+void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
+
+/* Returns true if PTR is not: a null pointer, a pointer to unmapped 
+    virtual memory, or a pointer to kernel virtual address space 
+    (above PHYS_BASE). False otherwise. */
+static bool is_pointer_valid(void* ptr) {
+  struct thread* t = thread_current();
+  for (int offset = 0; offset < 4; offset++) {
+    if (ptr + offset == NULL || !is_user_vaddr(ptr + offset) ||
+        pagedir_get_page(t->pcb->pagedir, ptr + offset) == NULL) {
+      return false;
     }
   }
-  return 0;
-};
+  return true;
+}
+int add_to_fd_table(struct file* file);
+struct file* get_from_fd_table(int fd);
+void remove_from_fd_table(int fd);
 
-int sys_lock_acquire(lock_t* lock) {
-  struct thread* cur = thread_current();
-  struct list_elem* e;
-  for (e = list_begin(&cur->pcb->locks); e != list_end(&cur->pcb->locks); e = list_next(e)) {
-    struct lock_list_elem* curr_lock_e = list_entry(e, struct lock_list_elem, elem);
-    if (curr_lock_e->handle == *lock) {
-      if ((&(curr_lock_e->lock))->holder == cur) {
-        return 0;
+static void validate_pointer(void* ptr) {
+  if (!is_pointer_valid(ptr)) {
+    printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+    process_exit(-1);
+  }
+}
+
+static void validate_args(uint32_t* args, int arg_count) {
+  for (int offset = 0; offset < arg_count; offset++) {
+    validate_pointer(args + offset);
+  }
+}
+
+static void syscall_handler(struct intr_frame* f UNUSED) {
+  uint32_t* args = ((uint32_t*)f->esp);
+
+  /*
+   * The following print statement, if uncommented, will print out the syscall
+   * number whenever a process enters a system call. You might find it useful
+   * when debugging. It will cause tests to fail, however, so you should not
+   * include it in your final submission.
+   */
+
+  /* printf("System call number: %d\n", args[0]); */
+
+  validate_pointer(args);
+  int syscall_num = args[0];
+  if (syscall_num == SYS_EXIT) { /** PROCESS CONTROL SYSCALLS **/
+    validate_args(args, 2);
+    printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
+    process_exit(args[1]);
+    return;
+  } else if (args[0] == SYS_COMPUTE_E) {
+    int n = (int)args[1];
+    if (n >= 0) {
+      int e = sys_sum_to_e(n);
+      f->eax = e;
+    }
+    return;
+  } else if (syscall_num == SYS_PRACTICE) {
+    f->eax = args[1] + 1;
+    return;
+  } else if (syscall_num == SYS_HALT) {
+    shutdown_power_off();
+  } else if (syscall_num == SYS_EXEC) {
+    validate_args(args, 2);
+    validate_pointer((char*)args[1]);
+    char* cmd = (char*)args[1];
+    int child_pid = process_execute(cmd);
+    f->eax = child_pid;
+    return;
+  } else if (syscall_num == SYS_WAIT) {
+    validate_args(args, 2);
+    int exit_code = process_wait(args[1]);
+    f->eax = exit_code;
+    return;
+  } else if (syscall_num == SYS_CREATE) {
+    validate_args(args, 3);
+    validate_pointer((char*)args[1]);
+    char* file_name = (char*)args[1];
+    off_t initial_size = args[2];
+    lock_acquire(&file_lock);
+    bool is_success = filesys_create(file_name, initial_size);
+    lock_release(&file_lock);
+    f->eax = is_success;
+    return;
+  } else if (syscall_num == SYS_REMOVE) {
+    validate_args(args, 2);
+    validate_pointer((char*)args[1]);
+
+    char* file_name = (char*)args[1];
+    lock_acquire(&file_lock);
+    bool is_success = filesys_remove(file_name);
+    lock_release(&file_lock);
+    f->eax = is_success;
+    return;
+  } else if (syscall_num == SYS_OPEN) {
+    validate_args(args, 2);
+    validate_pointer((char*)args[1]);
+
+    char* file_name = (char*)args[1];
+    lock_acquire(&file_lock);
+    struct file* file = filesys_open(file_name);
+    lock_release(&file_lock);
+    if (file == NULL) {
+      f->eax = -1;
+      return;
+    }
+
+    int new_fd = add_to_fd_table(file);
+    f->eax = new_fd;
+    return;
+  } else if (syscall_num == SYS_FILESIZE) {
+    validate_args(args, 2);
+    int fd = args[1];
+    struct file* file = get_from_fd_table(fd);
+    if (file == NULL) {
+      f->eax = -1;
+      printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
+      process_exit(0);
+    }
+    lock_acquire(&file_lock);
+    off_t size = file_length(file);
+    lock_release(&file_lock);
+    f->eax = size;
+    return;
+  } else if (syscall_num == SYS_READ) {
+    validate_args(args, 4);
+    validate_pointer(args[2]);
+    int fd = args[1];
+
+    char* buffer = (char*)args[2];
+    unsigned size = args[3];
+
+    if (fd == 0) { // read from STDIN_FILENO
+      input_getc();
+    } else {
+      struct file* file = get_from_fd_table(fd);
+      if (file == NULL) {
+        f->eax = -1;
+        return;
       }
-      lock_acquire(&curr_lock_e->lock);
-      return 1;
+      lock_acquire(&file_lock);
+      off_t bytes_read = file_read(file, buffer, size);
+      lock_release(&file_lock);
+      f->eax = bytes_read;
     }
-  }
-  return 0;
-};
-int sys_lock_release(lock_t* lock) {
-  struct thread* cur = thread_current();
-  struct list_elem* e;
-  for (e = list_begin(&cur->pcb->locks); e != list_end(&cur->pcb->locks); e = list_next(e)) {
-    struct lock_list_elem* curr_lock_e = list_entry(e, struct lock_list_elem, elem);
-    if (curr_lock_e->handle == *lock) {
-      if ((&(curr_lock_e->lock))->holder != cur) {
-        return 0;
+    return;
+  } else if (syscall_num == SYS_WRITE) {
+    validate_args(args, 4);
+    validate_pointer(args[2]);
+
+    int fd = args[1];
+    char* buffer = (char*)args[2];
+    unsigned size = args[3];
+    if (fd == 1) { // write to console: STDOUT
+      putbuf(buffer, size);
+      f->eax = size;
+    } else {
+      struct file* file = get_from_fd_table(fd);
+      if (file == NULL) {
+        f->eax = -1;
+        return;
       }
-      lock_release(&curr_lock_e->lock);
-      return 1;
+      lock_acquire(&file_lock);
+      off_t bytes_written = file_write(file, buffer, size);
+      lock_release(&file_lock);
+      f->eax = bytes_written;
     }
-  }
-  return 0;
-};
-int sys_sema_init(sema_t* sema, int val) {
-  if (sema != NULL && val >= 0) {
-    struct sema_list_elem* sema_list_e = malloc(sizeof(struct sema_list_elem));
-    struct thread* cur = thread_current();
-    *sema = cur->pcb->next_sema_handle++;
-    if (sema_list_e != NULL) {
-      sema_init(&sema_list_e->sema, val);
-      sema_list_e->handle = *sema;
-      list_push_back(&cur->pcb->semas, &sema_list_e->elem);
-      return 1;
+    return;
+  } else if (syscall_num == SYS_SEEK) {
+    validate_args(args, 3);
+    int fd = args[1];
+    unsigned position = args[2];
+
+    struct file* file = get_from_fd_table(fd);
+    if (file != NULL) {
+      lock_acquire(&file_lock);
+      file_seek(file, position);
+      lock_release(&file_lock);
     }
+    return;
+  } else if (syscall_num == SYS_TELL) {
+    validate_args(args, 2);
+    int fd = args[1];
+
+    struct file* file = get_from_fd_table(fd);
+    if (file == NULL) {
+      f->eax = -1;
+      return;
+    }
+    lock_acquire(&file_lock);
+    off_t curr_pos = file_tell(file);
+    lock_release(&file_lock);
+    f->eax = curr_pos;
+    return;
+  } else if (syscall_num == SYS_CLOSE) {
+    validate_args(args, 2);
+    int fd = args[1];
+
+    struct file* file = get_from_fd_table(fd);
+    if (file == NULL) {
+      f->eax = -1;
+      return;
+    }
+    remove_from_fd_table(fd);
+    lock_acquire(&file_lock);
+    file_close(file);
+    lock_release(&file_lock);
+  } else { // syscall DNE
+    printf("%s: exit(0)\n", thread_current()->pcb->process_name);
+    process_exit(0);
   }
-  return 0;
-};
-int sys_sema_down(sema_t* sema) {
-  struct thread* cur = thread_current();
+}
+
+/* Helper function for File Operation Syscalls. On success, 
+  returns a new file descriptor that points to FILE in fd_table
+  and -1 otherwise.
+*/
+int add_to_fd_table(struct file* file) {
+  struct thread* t = thread_current();
+
+  struct fd_entry* new_entry = malloc(sizeof(struct fd_entry));
+  if (new_entry != NULL) {
+    new_entry->file = file;
+    new_entry->fd = t->pcb->fd_table->next_fd;
+    list_push_back(&(t->pcb->fd_table->fd_entries), &(new_entry->elem));
+
+    t->pcb->fd_table->next_fd++; // increment next_fd to next available location
+
+    return new_entry->fd;
+  }
+  return -1;
+}
+
+/* Helper function for File Operation Syscalls. On success,
+  returns the file pointed to by FD in fd_table and NULL 
+  otherwise.
+*/
+struct file* get_from_fd_table(int fd) {
+  struct thread* t = thread_current();
+
   struct list_elem* e;
-  for (e = list_begin(&cur->pcb->semas); e != list_end(&cur->pcb->semas); e = list_next(e)) {
-    struct sema_list_elem* curr_sema_e = list_entry(e, struct sema_list_elem, elem);
-    if (curr_sema_e->handle == *sema) {
-      sema_down(&curr_sema_e->sema);
-      return 1;
+
+  for (e = list_begin(&(t->pcb->fd_table->fd_entries));
+       e != list_end(&(t->pcb->fd_table->fd_entries)); e = list_next(e)) {
+    struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
+    if (entry->fd == fd) {
+      return entry->file;
     }
   }
-  return 0;
-};
-int sys_sema_up(sema_t* sema) {
-  struct thread* cur = thread_current();
+  return NULL;
+}
+
+/* Helper function for File Operation Syscalls. Removes fd from 
+  fd_table.
+*/
+void remove_from_fd_table(int fd) {
+  struct thread* t = thread_current();
+
+  struct fd_entry* entry_to_remove = NULL;
+
   struct list_elem* e;
-  for (e = list_begin(&cur->pcb->semas); e != list_end(&cur->pcb->semas); e = list_next(e)) {
-    struct sema_list_elem* curr_sema_e = list_entry(e, struct sema_list_elem, elem);
-    if (curr_sema_e->handle == *sema) {
-      sema_up(&curr_sema_e->sema);
-      return 1;
+  for (e = list_begin(&(t->pcb->fd_table->fd_entries));
+       e != list_end(&(t->pcb->fd_table->fd_entries)); e = list_next(e)) {
+    struct fd_entry* entry = list_entry(e, struct fd_entry, elem);
+    if (entry->fd == fd) {
+      entry_to_remove = entry;
+      break;
     }
   }
-  return 0;
-};
-int sys_get_tid(void) { return thread_current()->tid; };
+
+  if (entry_to_remove != NULL) {
+    struct list_elem* elm_to_remove = &(entry_to_remove->elem);
+    elm_to_remove->prev->next = elm_to_remove->next;
+    elm_to_remove->next->prev = elm_to_remove->prev;
+
+    free(entry_to_remove);
+  }
+}

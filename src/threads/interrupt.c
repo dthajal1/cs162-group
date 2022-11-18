@@ -10,7 +10,6 @@
 #include "threads/vaddr.h"
 #include "devices/timer.h"
 #ifdef USERPROG
-#include "userprog/process.h"
 #include "userprog/gdt.h"
 #endif
 
@@ -320,7 +319,6 @@ static inline bool is_trap_from_userspace(struct intr_frame* frame) {
 void intr_handler(struct intr_frame* frame) {
   bool external;
   intr_handler_func* handler;
-  struct thread* t = thread_current();
 
   /* External interrupts are special.
      We only handle one at a time (so interrupts must be off)
@@ -356,15 +354,6 @@ void intr_handler(struct intr_frame* frame) {
 
     if (yield_on_return)
       thread_yield();
-  }
-
-  if (is_trap_from_userspace(frame) && t->pcb->process_exited) {
-    lock_acquire(&t->pcb->exit_lock);
-    if (t->pcb->num_threads == 2) {
-      cond_signal(&t->pcb->exiting, &t->pcb->exit_lock);
-    }
-    lock_release(&t->pcb->exit_lock);
-    pthread_exit();
   }
 }
 
