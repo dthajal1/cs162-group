@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 
 /* A directory. */
 struct dir {
@@ -198,4 +199,66 @@ bool dir_readdir(struct dir* dir, char name[NAME_MAX + 1]) {
     }
   }
   return false;
+}
+
+/*
+  ### Helper Functions ###
+*/
+static int get_next_part(char part[NAME_MAX + 1], const char** srcp);
+
+/* Returns the dir struct given dir_name. If dir_name doesn’t exist, return NULL.
+  Can handle both absolute and relative paths. */
+struct dir* dir_get(char* dir_name) {
+  struct thread* cur = thread_current();
+
+  char next_part[NAME_MAX + 1];
+  struct dir* dir = NULL;
+  struct inode* inode = NULL;
+
+  if (strcmp(dir_name[0], '/') == 0) { // absolute path
+    dir = open_root_dir();
+  } else {                                // relative path
+    dir = dir_open(cur->pcb->cwd->inode); // TODO: open vs reopen?
+  }
+
+  while (get_next_part(next_part, &dir_name) == 1) {
+    bool success = dir_lookup(dir, next_part, &inode);
+    if (success) {
+      dir = dir_open(inode); // TODO: open vs reopen?
+    } else {
+      dir = NULL;
+      break;
+    }
+    dir_close(dir);
+  }
+  dir = dir_open(inode); // TODO: open vs reopen?
+  return dir;
+}
+
+/* Extracts a file name part from *SRCP into PART, and updates *SRCP so that the
+   next call will return the next file name part. Returns 1 if successful, 0 at
+   end of string, -1 for a too-long file name part. */
+static int get_next_part(char part[NAME_MAX + 1], const char** srcp) {
+  const char* src = *srcp;
+  char* dst = part;
+
+  /* Skip leading slashes.  If it's all slashes, we're done. */
+  while (*src == '/')
+    src++;
+  if (*src == '\0')
+    return 0;
+
+  /* Copy up to NAME_MAX character from SRC to DST.  Add null terminator. */
+  while (*src != '/' && *src != '\0') {
+    if (dst < part + NAME_MAX)
+      *dst++ = *src;
+    else
+      return -1;
+    src++;
+  }
+  *dst = '\0';
+
+  /* Advance source pointer. */
+  *srcp = src;
+  return 1;
 }

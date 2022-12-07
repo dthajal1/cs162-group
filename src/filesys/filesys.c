@@ -85,3 +85,27 @@ static void do_format(void) {
   free_map_close();
   printf("done.\n");
 }
+
+/*
+  ### Helper Functions ###
+*/
+
+/* Splits path and store directory name in dir_name and file name in filename.
+  If path is a directory, sets filename to new directory that's to be created 
+  and dir_name to existing directory. */
+void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
+  // if path ends in a trailing slash, strip it off
+  if (strcmp(path[strlen(path) - 1], '/') == 0) {
+    path[strlen(path) - 1] = '\0';
+  }
+
+  // find last occurence of /
+  char* pivot = strrchr(path, '/');
+
+  int len = strlen(path);
+  int file_len = strlen(pivot);
+  int dir_len = len - file_len;
+
+  strncpy(dir_name, path, dir_len);
+  strncpy(filename, pivot, file_len);
+}
