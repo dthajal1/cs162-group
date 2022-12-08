@@ -204,7 +204,16 @@ int sys_open(const char* ufile) {
   fd = malloc(sizeof *fd);
   if (fd != NULL) {
     lock_acquire(&fs_lock);
-    fd->file = filesys_open(kfile);
+    struct file* file = filesys_open(kfile);
+    if (file != NULL && file->inode->data->is_dir) {
+      fd->file = NULL;
+      inode_close(file->inode);        // TODO: needed?
+      fd->dir = dir_open(file->inode); // open vs reopen?
+    } else {
+      fd->file = file;
+      fd->dir = NULL;
+    }
+
     if (fd->file != NULL) {
       struct thread* cur = thread_current();
       handle = fd->handle = cur->pcb->next_handle++;
