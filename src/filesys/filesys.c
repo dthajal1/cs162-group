@@ -11,6 +11,7 @@
 struct block* fs_device;
 
 static void do_format(void);
+void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]);
 
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
@@ -36,11 +37,25 @@ void filesys_done(void) { free_map_close(); }
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
-bool filesys_create(const char* name, off_t initial_size) {
+bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
   block_sector_t inode_sector = 0;
-  struct dir* dir = dir_open_root();
-  bool success = (dir != NULL && free_map_allocate(1, &inode_sector) &&
-                  inode_create(inode_sector, initial_size) && dir_add(dir, name, inode_sector));
+  // struct dir* dir = dir_open_root();
+  struct dir* dir = NULL;
+  char filename[NAME_MAX + 1];
+  char dir_name[strlen(name) + 1];
+  char path[strlen(name) + 1];
+
+  strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
+  split_path(path, dir_name, filename);
+  if (strcmp(dir_name, ".") == 0) {
+    dir = dir_open_root();
+  } else {
+    dir = dir_get(dir_name);
+  }
+
+  bool success =
+      (dir != NULL && free_map_allocate(1, &inode_sector) &&
+       inode_create(inode_sector, initial_size, is_dir) && dir_add(dir, filename, inode_sector));
   if (!success && inode_sector != 0)
     free_map_release(inode_sector, 1);
   dir_close(dir);
@@ -95,17 +110,24 @@ static void do_format(void) {
   and dir_name to existing directory. */
 void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
   // if path ends in a trailing slash, strip it off
-  if (strcmp(path[strlen(path) - 1], '/') == 0) {
+  if (path[strlen(path) - 1] == '/') {
     path[strlen(path) - 1] = '\0';
   }
 
   // find last occurence of /
   char* pivot = strrchr(path, '/');
 
+  if (strcmp(path, pivot) == 0) {
+    // path = 'filename'. TODO: update this after . and .. handled in dir_get
+    strlcpy(dir_name, ".", sizeof(char) * (1 + 1));
+    strlcpy(filename, path, sizeof(char) * (NAME_MAX + 1));
+    return;
+  }
+
   int len = strlen(path);
   int file_len = strlen(pivot);
   int dir_len = len - file_len;
 
-  strncpy(dir_name, path, dir_len);
-  strncpy(filename, pivot, file_len);
+  strlcpy(dir_name, path, sizeof(char) * (dir_len + 1));
+  strlcpy(filename, path, sizeof(char) * (file_len + 1));
 }

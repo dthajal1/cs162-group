@@ -23,7 +23,7 @@ struct dir_entry {
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool dir_create(block_sector_t sector, size_t entry_cnt) {
-  return inode_create(sector, entry_cnt * sizeof(struct dir_entry));
+  return inode_create(sector, entry_cnt * sizeof(struct dir_entry), true);
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -208,15 +208,15 @@ static int get_next_part(char part[NAME_MAX + 1], const char** srcp);
 
 /* Returns the dir struct given dir_name. If dir_name doesn’t exist, return NULL.
   Can handle both absolute and relative paths. */
-struct dir* dir_get(char* dir_name) {
+struct dir* dir_get(const char* dir_name) {
   struct thread* cur = thread_current();
 
   char next_part[NAME_MAX + 1];
   struct dir* dir = NULL;
   struct inode* inode = NULL;
 
-  if (strcmp(dir_name[0], '/') == 0) { // absolute path
-    dir = open_root_dir();
+  if (dir_name[0] == '/') { // absolute path
+    dir = dir_open_root();
   } else {                                // relative path
     dir = dir_open(cur->pcb->cwd->inode); // TODO: open vs reopen?
   }
