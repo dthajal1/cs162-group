@@ -11,6 +11,7 @@
 struct dir {
   struct inode* inode; /* Backing store. */
   off_t pos;           /* Current position. */
+  int num_items;       /* Number of files + subdirectories within this directory. */
 };
 
 /* A single directory entry. */
@@ -146,6 +147,10 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector) {
   e.inode_sector = inode_sector;
   success = inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
 
+  /* Increment num_items */
+  if (success)
+    dir->num_items++;
+
 done:
   return success;
 }
@@ -180,6 +185,9 @@ bool dir_remove(struct dir* dir, const char* name) {
   inode_remove(inode);
   success = true;
 
+  /* Decrement num_items */
+  dir->num_items--;
+
 done:
   inode_close(inode);
   return success;
@@ -209,20 +217,18 @@ static int get_next_part(char part[NAME_MAX + 1], const char** srcp);
 /* Returns the dir struct given dir_name. If dir_name doesn’t exist, return NULL.
   Can handle both absolute and relative paths. */
 struct dir* dir_get(const char* dir_name) {
-  struct thread* cur = thread_current();
-
   char next_part[NAME_MAX + 1];
   struct dir* dir = NULL;
   struct inode* inode = NULL;
 
   if (dir_name[0] == '/') { // absolute path
     dir = dir_open_root();
-  } else {                                // relative path
-    dir = dir_open(cur->pcb->cwd->inode); // TODO: open vs reopen?
+  } else {                                             // relative path
+    dir = dir_open(thread_current()->pcb->cwd->inode); // TODO: open vs reopen?
   }
 
   while (get_next_part(next_part, &dir_name) == 1) {
-    bool success = dir_lookup(dir, next_part, &inode);
+    bool success = dir_lookup(dir, next_part, &inode); // TODO: handle . and .. for dir_lookup
     if (success) {
       dir = dir_open(inode); // TODO: open vs reopen?
     } else {

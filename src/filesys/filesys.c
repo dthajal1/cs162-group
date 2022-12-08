@@ -47,7 +47,7 @@ bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
-  if (strcmp(dir_name, ".") == 0) {
+  if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
     dir = dir_open_root();
   } else {
     dir = dir_get(dir_name);
@@ -84,8 +84,27 @@ struct file* filesys_open(const char* name) {
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool filesys_remove(const char* name) {
-  struct dir* dir = dir_open_root();
-  bool success = dir != NULL && dir_remove(dir, name);
+  // struct dir* dir = dir_open_root();
+  struct dir* dir = NULL;
+  char filename[NAME_MAX + 1];
+  char dir_name[strlen(name) + 1];
+  char path[strlen(name) + 1];
+
+  strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
+  split_path(path, dir_name, filename);
+  if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
+    dir = dir_open_root();
+  } else {
+    dir = dir_get(dir_name);
+  }
+
+  // TODO: allow directories deltion only if they do not contain any files or subdirectories
+
+  // TODO: disallow deletion of root directory
+
+  // TODO: disallow deletion of a directory that is open by a process or in use as a process’s cwd
+
+  bool success = dir != NULL && dir_remove(dir, filename);
   dir_close(dir);
 
   return success;
@@ -106,7 +125,7 @@ static void do_format(void) {
 */
 
 /* Splits path and store directory name in dir_name and file name in filename.
-  If path is a directory, sets filename to new directory that's to be created 
+  If path is a directory, sets filename to new directory that's to be created/removed
   and dir_name to existing directory. */
 void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
   // if path ends in a trailing slash, strip it off
