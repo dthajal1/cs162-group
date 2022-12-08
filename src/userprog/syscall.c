@@ -274,6 +274,13 @@ int sys_read(int handle, void* udst_, unsigned size) {
   /* Handle all other reads. */
   fd = lookup_fd(handle);
   lock_acquire(&fs_lock);
+
+  /* Disallow reads on directories. Should be making SYS_READDIR instead */
+  if (fd != NULL && fd->dir != NULL) {
+    lock_release(&fs_lock);
+    return -1;
+  }
+
   while (size > 0) {
     /* How much to read into this page? */
     size_t page_left = PGSIZE - pg_ofs(udst);
@@ -319,6 +326,13 @@ int sys_write(int handle, void* usrc_, unsigned size) {
     fd = lookup_fd(handle);
 
   lock_acquire(&fs_lock);
+
+  /* Disallow writes on directories. Should be making SYS_MKDIR instead */
+  if (fd != NULL && fd->dir != NULL) {
+    lock_release(&fs_lock);
+    return -1;
+  }
+
   while (size > 0) {
     /* How much bytes to write to this page? */
     size_t page_left = PGSIZE - pg_ofs(usrc);
