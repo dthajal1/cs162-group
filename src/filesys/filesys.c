@@ -6,6 +6,8 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "threads/thread.h"
+#include "userprog/process.h"
 
 /* Partition that contains the file system. */
 struct block* fs_device;
@@ -27,6 +29,9 @@ void filesys_init(bool format) {
     do_format();
 
   free_map_open();
+
+  /* first user process should have the root directory as its cwd. */
+  thread_current()->pcb->cwd = dir_open_root();
 }
 
 /* Shuts down the file system module, writing any unwritten data

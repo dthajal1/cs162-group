@@ -58,10 +58,6 @@ void userprog_init(void) {
   if (success)
     list_init(&t->pcb->children);
 
-  /* first user process should have the root directory as its cwd. */
-  if (success)
-    t->pcb->cwd = dir_open_root();
-
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }
