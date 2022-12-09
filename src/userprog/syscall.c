@@ -173,7 +173,7 @@ int sys_create(const char* ufile, unsigned initial_size) {
   bool ok;
 
   lock_acquire(&fs_lock);
-  ok = filesys_create(kfile, initial_size);
+  ok = filesys_create(kfile, initial_size, false);
   lock_release(&fs_lock);
 
   palloc_free_page(kfile);
