@@ -6,6 +6,7 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
+#include "userprog/process.h"
 
 /* A directory. */
 struct dir {
@@ -223,8 +224,9 @@ struct dir* dir_get(const char* dir_name) {
 
   if (dir_name[0] == '/') { // absolute path
     dir = dir_open_root();
-  } else {                                             // relative path
-    dir = dir_open(thread_current()->pcb->cwd->inode); // TODO: open vs reopen?
+  } else { // relative path
+    struct dir* cwd = get_cwd(thread_current()->pcb);
+    dir = dir_open(dir_get_inode(cwd)); // TODO: open vs reopen?
   }
 
   while (get_next_part(next_part, &dir_name) == 1) {
