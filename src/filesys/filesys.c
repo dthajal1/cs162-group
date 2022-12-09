@@ -154,10 +154,10 @@ void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
   // find last occurence of /
   char* pivot = strrchr(path, '/');
 
-  if (strcmp(path, pivot) == 0) {
-    // path = 'filename'. TODO: update this after . and .. handled in dir_get
+  if (pivot == NULL) { // TODO: update this after . and .. handled in dir_get
+    // path = 'filename'.
     strlcpy(dir_name, ".", sizeof(char) * (1 + 1));
-    strlcpy(filename, path, sizeof(char) * (NAME_MAX + 1));
+    strlcpy(filename, path, sizeof(char) * (strlen(path) + 1));
     return;
   }
 
