@@ -45,7 +45,9 @@ static void syscall_handler(struct intr_frame* f) {
       {3, (syscall_function*)sys_read},      {3, (syscall_function*)sys_write},
       {2, (syscall_function*)sys_seek},      {1, (syscall_function*)sys_tell},
       {1, (syscall_function*)sys_close},     {1, (syscall_function*)sys_practice},
-      {1, (syscall_function*)sys_compute_e},
+      {1, (syscall_function*)sys_compute_e}, {1, (syscall_function*)sys_chdir},
+      {1, (syscall_function*)sys_mkdir},     {2, (syscall_function*)sys_readdir},
+      {1, (syscall_function*)sys_isdir},     {1, (syscall_function*)sys_inumber},
   };
 
   const struct syscall* sc;
@@ -410,3 +412,21 @@ int sys_practice(int input) { return input + 1; }
 
 /* Compute e and return a float cast to an int */
 int sys_compute_e(int n) { return sys_sum_to_e(n); }
+
+// TODO
+
+/* Changes the current working directory of the process to dir. 
+Returns true if successful, false on failure. */
+int sys_chdir(const char* dir) {
+  struct dir* new_dir = dir_get(dir); // Opens and returns dir
+  if (new_dir == NULL)
+    return false;
+
+  thread_current()->pcb->cwd = new_dir;
+  return true;
+}
+
+int sys_mkdir(const char* dir) { return 0; }
+int sys_readdir(int fd, char name[READDIR_MAX_LEN + 1]) { return 0; }
+int sys_isdir(int fd) { return 0; }
+int sys_inumber(int fd) { return 0; }

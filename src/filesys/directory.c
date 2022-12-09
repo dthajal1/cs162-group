@@ -178,6 +178,21 @@ bool dir_remove(struct dir* dir, const char* name) {
   if (inode == NULL)
     goto done;
 
+  // Allow directories deletion only if they do not contain any files or subdirectories
+  if (dir->num_items != 0) {
+    goto done;
+  }
+
+  // Disallow deletion of root directory
+  if (e.inode_sector == ROOT_DIR_SECTOR) {
+    goto done;
+  }
+
+  // Disallow deletion of a directory that is open by a process or in use as a process’s cwd
+  if (inode->open_cnt > 0 || e.in_use) {
+    goto done;
+  }
+
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at(dir->inode, &e, sizeof e, ofs) != sizeof e)
@@ -216,7 +231,7 @@ bool dir_readdir(struct dir* dir, char name[NAME_MAX + 1]) {
 */
 static int get_next_part(char part[NAME_MAX + 1], const char** srcp);
 
-/* Returns the dir struct given dir_name. If dir_name doesn’t exist, return NULL.
+/* Opens & returns the dir struct given dir_name. If dir_name doesn’t exist, return NULL.
   Can handle both absolute and relative paths. */
 struct dir* dir_get(const char* dir_name) {
   char next_part[NAME_MAX + 1];

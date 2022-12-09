@@ -125,12 +125,6 @@ bool filesys_remove(const char* name) {
     dir = dir_get(dir_name);
   }
 
-  // TODO: allow directories deltion only if they do not contain any files or subdirectories
-
-  // TODO: disallow deletion of root directory
-
-  // TODO: disallow deletion of a directory that is open by a process or in use as a process’s cwd
-
   bool success = dir != NULL && dir_remove(dir, filename);
   dir_close(dir);
 
