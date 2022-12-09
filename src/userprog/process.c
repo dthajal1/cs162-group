@@ -35,6 +35,7 @@ struct exec_info {
   struct semaphore load_done;      /* "Up"ed when loading complete. */
   struct wait_status* wait_status; /* Child process. */
   bool success;                    /* Program successfully loaded? */
+  struct dir* cwd;                 /* CWD. */
 };
 
 /* Initializes user programs in the system by ensuring the main
@@ -74,6 +75,7 @@ pid_t process_execute(const char* file_name) {
   /* Initialize exec_info. */
   exec.file_name = file_name;
   sema_init(&exec.load_done, 0);
+  exec.cwd = dir_reopen(thread_current()->pcb->cwd);
 
   /* Create a new thread to execute FILE_NAME. */
   strlcpy(thread_name, file_name, sizeof thread_name);
@@ -132,6 +134,11 @@ static void start_process(void* exec_) {
     exec->wait_status->pid = t->tid;
     exec->wait_status->exit_code = -1;
     sema_init(&exec->wait_status->dead, 0);
+  }
+
+  /* Inherit parent's cwd. */
+  if (success) {
+    t->pcb->cwd = exec->cwd;
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -687,6 +694,11 @@ bool is_main_thread(struct thread* t, struct process* p) { return p->main_thread
 
 /* Gets the PID of a process */
 pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
+
+/* Gets the CWD of a process */
+struct dir* get_cwd(struct process* p) {
+  return p->cwd;
+}
 
 /* Creates a new stack for the thread and sets up its arguments.
    Stores the thread's entry point into *EIP and its initial stack

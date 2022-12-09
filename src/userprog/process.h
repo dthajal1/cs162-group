@@ -33,6 +33,7 @@ struct process {
   char process_name[16];           /* Name of the main thread */
   struct file* bin_file;           /* Executable. */
   struct thread* main_thread;      /* Pointer to main thread */
+  struct dir* cwd;                 /* current working directory */
 
   /* Owned by syscall.c. */
   struct list fds; /* List of file descriptors. */
