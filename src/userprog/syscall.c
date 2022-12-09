@@ -205,17 +205,17 @@ int sys_open(const char* ufile) {
   if (fd != NULL) {
     lock_acquire(&fs_lock);
     struct file* file = filesys_open(kfile);
-    struct inode* inode = file_get_inode(file) || NULL;
-    if (inode != NULL && inode_get_is_dir(inode)) {
-      fd->file = NULL;
-      // TODO: need to file_close(file)??
-      fd->dir = dir_open(file_get_inode(file)); // open vs reopen?
-    } else {
-      fd->file = file;
-      fd->dir = NULL;
-    }
-
-    if (fd->file != NULL) {
+    if (file != NULL) {
+      struct inode* inode = file_get_inode(file);
+      if (inode_get_is_dir(inode)) {
+        fd->file = NULL;
+        // TODO: need to file_close(file)??
+        fd->dir = dir_open(inode); // open vs reopen?
+      } else {
+        fd->file = file;
+        fd->dir = NULL;
+      }
+      /* Add entry to fd table. */
       struct thread* cur = thread_current();
       handle = fd->handle = cur->pcb->next_handle++;
       list_push_front(&cur->pcb->fds, &fd->elem);
