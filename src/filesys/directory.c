@@ -10,6 +10,7 @@
 struct dir {
   struct inode* inode; /* Backing store. */
   off_t pos;           /* Current position. */
+  int num_items;       /* Number of files + subdirectories within this directory. */
 };
 
 /* A single directory entry. */
@@ -145,6 +146,10 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector) {
   e.inode_sector = inode_sector;
   success = inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
 
+  /* Increment num_items */
+  if (success)
+    dir->num_items++;
+
 done:
   return success;
 }
@@ -178,6 +183,9 @@ bool dir_remove(struct dir* dir, const char* name) {
   /* Remove inode. */
   inode_remove(inode);
   success = true;
+
+  /* Decrement num_items */
+  dir->num_items--;
 
 done:
   inode_close(inode);
