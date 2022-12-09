@@ -47,8 +47,11 @@ bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
   // struct dir* dir = dir_open_root();
   struct dir* dir = NULL;
   char filename[NAME_MAX + 1];
-  char dir_name[strlen(name) + 1];
-  char path[strlen(name) + 1];
+  char dir_name[DIR_NAME_MAX + 1];
+  char path[PATH_NAME_MAX + 1];
+
+  if (strlen(name) > PATH_NAME_MAX)
+    return false;
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
@@ -79,8 +82,11 @@ struct file* filesys_open(const char* name) {
 
   struct dir* dir = NULL;
   char filename[NAME_MAX + 1];
-  char dir_name[strlen(name) + 1];
-  char path[strlen(name) + 1];
+  char dir_name[DIR_NAME_MAX + 1];
+  char path[PATH_NAME_MAX + 1];
+
+  if (strlen(name) > PATH_NAME_MAX)
+    return NULL;
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
@@ -105,8 +111,11 @@ bool filesys_remove(const char* name) {
   // struct dir* dir = dir_open_root();
   struct dir* dir = NULL;
   char filename[NAME_MAX + 1];
-  char dir_name[strlen(name) + 1];
-  char path[strlen(name) + 1];
+  char dir_name[DIR_NAME_MAX + 1];
+  char path[PATH_NAME_MAX + 1];
+
+  if (strlen(name) > PATH_NAME_MAX)
+    return false;
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
