@@ -4,6 +4,9 @@
 #include "threads/thread.h"
 #include "userprog/process.h"
 
+/* Maximum characters in a filename written by readdir(). */
+#define READDIR_MAX_LEN 14
+
 int sys_halt(void);
 int sys_exit(int status);
 int sys_exec(const char* ufile);
