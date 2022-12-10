@@ -8,6 +8,7 @@
 #include "filesys/directory.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "filesys/inode.h"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
@@ -430,6 +431,29 @@ int sys_chdir(const char* dir) {
 /* Creates the directory named dir. */
 int sys_mkdir(const char* dir) { return make_new_dir(dir); }
 
-int sys_readdir(int fd, char name[READDIR_MAX_LEN + 1]) { return 0; }
-int sys_isdir(int fd) { return 0; }
-int sys_inumber(int fd) { return 0; }
+/* Reads a directory entry from file descriptor fd, which must represent a directory. */
+int sys_readdir(int fd, char name[READDIR_MAX_LEN + 1]) {
+  struct file_descriptor* file_desc = lookup_fd(fd);
+  if (file_desc->dir == NULL)
+    return false;
+  return dir_readdir(file_desc->dir, name);
+}
+
+/* Returns true if fd represents a directory, false if it represents an ordinary file. */
+int sys_isdir(int fd) {
+  struct file_descriptor* file_desc = lookup_fd(fd);
+  return file_desc->dir != NULL;
+}
+
+/* Returns the inode number of the inode associated with fd, which may represent an ordinary file or a directory. */
+int sys_inumber(int fd) {
+  struct file_descriptor* file_desc = lookup_fd(fd);
+
+  if (file_desc->file != NULL) {
+    struct file* f = file_desc->file;
+    return f->inode->sector;
+  } else {
+    struct dir* d = file_desc->dir;
+    return d->inode->sector;
+  }
+}
