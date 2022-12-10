@@ -238,14 +238,15 @@ struct dir* dir_get(const char* dir_name) {
   struct inode* inode = NULL;
 
   if (dir_name[0] == '/') { // absolute path
+    // reopen instead?
     dir = dir_open_root();
   } else { // relative path
     struct dir* cwd = get_cwd(thread_current()->pcb);
-    dir = dir_open(dir_get_inode(cwd)); // TODO: open vs reopen?
+    dir = dir_reopen(cwd);
   }
 
   while (get_next_part(next_part, &dir_name) == 1) {
-    bool success = dir_lookup(dir, next_part, &inode); // TODO: handle . and .. for dir_lookup
+    bool success = dir_lookup(dir, next_part, &inode);
     if (success) {
       dir_close(dir);
       dir = dir_open(inode); // TODO: open vs reopen?
