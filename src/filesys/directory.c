@@ -302,7 +302,8 @@ struct dir* get_parent_dir(const char* dir) {
 
 /* Creates a directory named dir. */
 bool make_new_dir(const char* dir) {
-  if (dir_get(dir) != NULL) // if dir already exists
+  // if dir already exists
+  if (dir_get(dir) != NULL)
     return false;
 
   struct dir* parent_dir = get_parent_dir(dir);
@@ -314,12 +315,14 @@ bool make_new_dir(const char* dir) {
     // TODO: fixed number of entries for now, to be fixed after implementing extensible files
     return false;
   }
-  struct dir* d = dir_get(dir);
-  if (d == NULL)
+
+  struct dir* new_dir = dir_get(dir);
+  if (new_dir == NULL)
     return false;
 
   // add . and ..
-  bool success = dir_add(d, "..", parent_dir->inode->sector) && dir_add(d, ".", d->inode->sector);
+  bool success = dir_add(new_dir, "..", inode_get_inumber(dir_get_inode(parent_dir))) &&
+                 dir_add(new_dir, ".", inode_get_inumber(dir_get_inode(new_dir)));
 
   return success;
 }
