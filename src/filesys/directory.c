@@ -189,7 +189,7 @@ bool dir_remove(struct dir* dir, const char* name) {
   }
 
   // Disallow deletion of a directory that is open by a process or in use as a process’s cwd
-  if (inode->open_cnt > 0 || e.in_use) {
+  if (inode_get_open_cnt(inode) > 0 || e.in_use) {
     goto done;
   }
 
