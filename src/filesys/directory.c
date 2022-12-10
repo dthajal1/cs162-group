@@ -286,3 +286,70 @@ static int get_next_part(char part[NAME_MAX + 1], const char** srcp) {
   *srcp = src;
   return 1;
 }
+
+// Helper fxn to get parent dir
+struct dir* get_parent_dir(const char* dir) {
+  struct dir* child_dir = dir_get(dir);
+  if (child_dir == NULL)
+    return NULL;
+
+  // lookup and return parent dir of child dir
+  struct inode* inode = NULL;
+  dir_lookup(child_dir, "..", &inode);
+  dir_close(child_dir);
+  return dir_open(inode);
+}
+
+/* Creates a directory named dir. */
+bool make_new_dir(const char* dir) {
+  struct dir* d = dir_get(dir);
+  if (d == NULL)
+    return false;
+  if (inode_get_is_dir(d->inode))
+    return false;
+
+  struct dir* parent_dir = get_parent_dir(d);
+  if (parent_dir == NULL)
+    return false;
+
+  // allocate data block
+  block_sector_t inode_sector = 0;
+  if (!free_map_allocate(1, &inode_sector))
+    return false;
+  // write data block
+  // TODO: fixed number of entries for now, to be fixed after implementing extensible files
+  if (!dir_create(inode_sector, 10)) {
+    free_map_release(inode_sector, 1);
+    return false;
+  }
+  // allocate and create inode
+  if (!inode_create(inode_sector, BLOCK_SECTOR_SIZE, true)) {
+    free_map_release(inode_sector, 1);
+    return false;
+  }
+  struct inode* inode = inode_open(inode_sector);
+  if (inode == NULL) {
+    free_map_release(inode_sector, 1);
+    return false;
+  }
+  inode->data->is_dir = true;
+
+  // add new dir to parent dir
+  if (!dir_add(parent_dir, dir, inode_sector)) {
+    free_map_release(inode_sector, 1);
+    return false;
+  }
+
+  // add . and ..
+  if (!dir_add(parent_dir, "..", parent_dir->inode_sector)) {
+    free_map_release(inode_sector, 1);
+    return false;
+  }
+  if (!dir_add(parent_dir, ".", inode_sector)) {
+    free_map_release(inode_sector, 1);
+    return false;
+  }
+
+  inode_close(inode);
+  return true;
+}
