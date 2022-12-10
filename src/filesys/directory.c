@@ -294,9 +294,10 @@ struct dir* get_parent_dir(const char* dir) {
     return NULL;
 
   // lookup and return parent dir of child dir
-  struct inode* inode = NULL;
-  dir_lookup(child_dir, "..", &inode);
-  return dir_open(inode);
+  struct inode* parent_inode = NULL;
+  dir_lookup(child_dir, "..", &parent_inode);
+  dir_close(child_dir);
+  return dir_open(parent_inode);
 }
 
 /* Creates a directory named dir. */
