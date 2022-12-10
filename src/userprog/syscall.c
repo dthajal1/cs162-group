@@ -448,12 +448,11 @@ int sys_isdir(int fd) {
 /* Returns the inode number of the inode associated with fd, which may represent an ordinary file or a directory. */
 int sys_inumber(int fd) {
   struct file_descriptor* file_desc = lookup_fd(fd);
-
+  struct inode* inode;
   if (file_desc->file != NULL) {
-    struct file* f = file_desc->file;
-    return f->inode->sector;
+    inode = file_get_inode(file_desc->file);
   } else {
-    struct dir* d = file_desc->dir;
-    return d->inode->sector;
+    inode = dir_get_inode(file_desc->dir);
   }
+  return inode_get_inumber(inode);
 }
