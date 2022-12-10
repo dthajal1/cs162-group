@@ -149,8 +149,7 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector) {
   success = inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
 
   /* Increment num_items */
-  // TODO: do not increment if dir equals . or ..
-  if (success)
+  if (success && e.name != "." && e.name != "..")
     dir->num_items++;
 
 done:
