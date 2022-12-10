@@ -415,8 +415,6 @@ int sys_practice(int input) { return input + 1; }
 /* Compute e and return a float cast to an int */
 int sys_compute_e(int n) { return sys_sum_to_e(n); }
 
-// TODO
-
 /* Changes the current working directory of the process to dir. 
 Returns true if successful, false on failure. */
 int sys_chdir(const char* dir) {

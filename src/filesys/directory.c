@@ -149,7 +149,7 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector) {
   success = inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
 
   /* Increment num_items */
-  if (success && e.name != "." && e.name != "..")
+  if (success && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0)
     dir->num_items++;
 
 done:
@@ -217,7 +217,7 @@ bool dir_readdir(struct dir* dir, char name[NAME_MAX + 1]) {
 
   while (inode_read_at(dir->inode, &e, sizeof e, dir->pos) == sizeof e) {
     dir->pos += sizeof e;
-    if (e.in_use && e.name != ".." && e.name != ".") {
+    if (e.in_use && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0) {
       strlcpy(name, e.name, NAME_MAX + 1);
       return true;
     }
@@ -247,14 +247,15 @@ struct dir* dir_get(const char* dir_name) {
   while (get_next_part(next_part, &dir_name) == 1) {
     bool success = dir_lookup(dir, next_part, &inode); // TODO: handle . and .. for dir_lookup
     if (success) {
+      dir_close(dir);
       dir = dir_open(inode); // TODO: open vs reopen?
     } else {
       dir = NULL;
       break;
     }
-    dir_close(dir);
+    // dir_close(dir);
   }
-  dir = dir_open(inode); // TODO: open vs reopen?
+  // dir = dir_open(inode); // TODO: open vs reopen?
   return dir;
 }
 
@@ -290,7 +291,7 @@ static int get_next_part(char part[NAME_MAX + 1], const char** srcp) {
 struct dir* get_parent_dir(const char* dir) {
   struct dir* child_dir = dir_get(dir);
   if (child_dir == NULL)
-    return NULL;
+    return dir_open_root();
 
   // lookup and return parent dir of child dir
   struct inode* parent_inode = NULL;
@@ -314,7 +315,6 @@ bool make_new_dir(const char* dir) {
     // TODO: fixed number of entries for now, to be fixed after implementing extensible files
     return false;
   }
-
   struct dir* new_dir = dir_get(dir);
   if (new_dir == NULL)
     return false;
@@ -322,6 +322,6 @@ bool make_new_dir(const char* dir) {
   // add . and ..
   bool success = dir_add(new_dir, "..", inode_get_inumber(dir_get_inode(parent_dir))) &&
                  dir_add(new_dir, ".", inode_get_inumber(dir_get_inode(new_dir)));
-
+  dir_close(parent_dir);
   return success;
 }
