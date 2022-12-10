@@ -296,7 +296,6 @@ struct dir* get_parent_dir(const char* dir) {
   // lookup and return parent dir of child dir
   struct inode* inode = NULL;
   dir_lookup(child_dir, "..", &inode);
-  dir_close(child_dir);
   return dir_open(inode);
 }
 
