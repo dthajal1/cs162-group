@@ -5,6 +5,7 @@
 #include <syscall-nr.h>
 #include "devices/input.h"
 #include "devices/shutdown.h"
+#include "filesys/directory.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "threads/interrupt.h"
@@ -426,7 +427,9 @@ int sys_chdir(const char* dir) {
   return true;
 }
 
-int sys_mkdir(const char* dir) { return 0; }
+/* Creates the directory named dir. */
+int sys_mkdir(const char* dir) { return make_new_dir(dir); }
+
 int sys_readdir(int fd, char name[READDIR_MAX_LEN + 1]) { return 0; }
 int sys_isdir(int fd) { return 0; }
 int sys_inumber(int fd) { return 0; }
