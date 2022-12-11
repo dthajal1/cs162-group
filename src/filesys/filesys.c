@@ -55,7 +55,7 @@ bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
-  if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
+  if (strcmp(dir_name, ".") == 0) {
     dir = dir_reopen(dir_open_root());
   } else {
     dir = dir_get(dir_name);
@@ -89,7 +89,7 @@ struct file* filesys_open(const char* name) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
-  if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
+  if (strcmp(dir_name, ".") == 0) {
     dir = dir_reopen(dir_open_root());
   } else {
     dir = dir_get(dir_name);
@@ -117,7 +117,11 @@ bool filesys_remove(const char* name) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
-  if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
+  if (strcmp(dir_name, ".") == 0) {
+    /* Disallow removal of root directory. */
+    if (filename[0] == '\0')
+      return false;
+
     dir = dir_reopen(dir_open_root());
   } else {
     dir = dir_get(dir_name);
@@ -152,10 +156,15 @@ void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
     path[strlen(path) - 1] = '\0';
   }
 
+  // strip leading slashes
+  while (path[0] == '/') {
+    path += 1;
+  }
+
   // find last occurence of '/'
   char* pivot = strrchr(path, '/');
 
-  if (pivot == NULL) { // TODO: update this after . and .. handled in dir_get
+  if (pivot == NULL) {
     // path = 'filename'.
     strlcpy(dir_name, ".", sizeof(char) * (1 + 1));
     strlcpy(filename, path, sizeof(char) * (strlen(path) + 1));
