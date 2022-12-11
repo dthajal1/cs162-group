@@ -44,7 +44,7 @@ void filesys_done(void) { free_map_close(); }
    or if internal memory allocation fails. */
 bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
   block_sector_t inode_sector = 0;
-  // struct dir* dir = dir_open_root();
+
   struct dir* dir = NULL;
   char filename[NAME_MAX + 1];
   char dir_name[DIR_NAME_MAX + 1];
@@ -56,7 +56,7 @@ bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
   if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
-    dir = dir_open_root();
+    dir = dir_reopen(dir_open_root());
   } else {
     dir = dir_get(dir_name);
   }
@@ -77,7 +77,6 @@ bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file* filesys_open(const char* name) {
-  // struct dir* dir = dir_open_root();
   struct inode* inode = NULL;
 
   struct dir* dir = NULL;
@@ -91,7 +90,7 @@ struct file* filesys_open(const char* name) {
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
   if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
-    dir = dir_open_root();
+    dir = dir_reopen(dir_open_root());
   } else {
     dir = dir_get(dir_name);
   }
@@ -108,7 +107,6 @@ struct file* filesys_open(const char* name) {
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool filesys_remove(const char* name) {
-  // struct dir* dir = dir_open_root();
   struct dir* dir = NULL;
   char filename[NAME_MAX + 1];
   char dir_name[DIR_NAME_MAX + 1];
@@ -120,7 +118,7 @@ bool filesys_remove(const char* name) {
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
   if (strcmp(dir_name, ".") == 0) { // TODO: remove this after . and .. handled in dir_get
-    dir = dir_open_root();
+    dir = dir_reopen(dir_open_root());
   } else {
     dir = dir_get(dir_name);
   }

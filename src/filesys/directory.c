@@ -238,8 +238,7 @@ struct dir* dir_get(const char* dir_name) {
   struct inode* inode = NULL;
 
   if (dir_name[0] == '/') { // absolute path
-    // reopen instead?
-    dir = dir_open_root();
+    dir = dir_reopen(dir_open_root());
   } else { // relative path
     struct dir* cwd = get_cwd(thread_current()->pcb);
     dir = dir_reopen(cwd);
@@ -247,16 +246,14 @@ struct dir* dir_get(const char* dir_name) {
 
   while (get_next_part(next_part, &dir_name) == 1) {
     bool success = dir_lookup(dir, next_part, &inode);
+    dir_close(dir);
     if (success) {
-      dir_close(dir);
-      dir = dir_open(inode); // TODO: open vs reopen?
+      dir = dir_open(inode);
     } else {
       dir = NULL;
       break;
     }
-    // dir_close(dir);
   }
-  // dir = dir_open(inode); // TODO: open vs reopen?
   return dir;
 }
 
@@ -291,38 +288,40 @@ static int get_next_part(char part[NAME_MAX + 1], const char** srcp) {
 // Helper fxn to get parent dir
 struct dir* get_parent_dir(const char* dir) {
   struct dir* child_dir = dir_get(dir);
+  struct dir* parent_dir = NULL;
   if (child_dir == NULL)
-    return dir_open_root();
-
-  // lookup and return parent dir of child dir
-  struct inode* parent_inode = NULL;
-  dir_lookup(child_dir, "..", &parent_inode);
-  dir_close(child_dir);
-  return dir_open(parent_inode);
+    parent_dir = dir_reopen(dir_open_root());
+  else {
+    /* lookup and return parent dir of child dir */
+    struct inode* parent_inode = NULL;
+    dir_lookup(child_dir, "..", &parent_inode);
+    dir_close(child_dir);
+    parent_dir = dir_open(parent_inode);
+  }
+  return parent_dir;
 }
 
 /* Creates a directory named dir. */
 bool make_new_dir(const char* dir) {
-  // if dir already exists
+  /* Check dir doesn't already exists. */
   if (dir_get(dir) != NULL)
     return false;
 
+  /* Check parent directory exists. */
   struct dir* parent_dir = get_parent_dir(dir);
   if (parent_dir == NULL)
     return false;
 
-  // add new dir to parent dir
-  if (!filesys_create(dir, sizeof(struct dir_entry) * 10, true)) {
-    // TODO: fixed number of entries for now, to be fixed after implementing extensible files
-    return false;
-  }
-  struct dir* new_dir = dir_get(dir);
-  if (new_dir == NULL)
-    return false;
+  /* Make a new directory dir. */
+  bool success = filesys_create(dir, sizeof(struct dir_entry) * 10, true);
 
-  // add . and ..
-  bool success = dir_add(new_dir, "..", inode_get_inumber(dir_get_inode(parent_dir))) &&
-                 dir_add(new_dir, ".", inode_get_inumber(dir_get_inode(new_dir)));
-  dir_close(parent_dir);
+  if (success) {
+    /* Get newly created dir and add . and .. paths to it. */
+    struct dir* new_dir = dir_get(dir);
+    success = dir_add(new_dir, "..", inode_get_inumber(dir_get_inode(parent_dir))) &&
+              dir_add(new_dir, ".", inode_get_inumber(dir_get_inode(new_dir)));
+    dir_close(parent_dir);
+  }
+
   return success;
 }
