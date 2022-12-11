@@ -30,5 +30,6 @@ bool make_new_dir(const char* dir);
 
 /* Helper functions. */
 struct dir* dir_get(const char* dir_name);
+int get_next_part(char part[NAME_MAX + 1], const char** srcp);
 
 #endif /* filesys/directory.h */

@@ -228,7 +228,6 @@ bool dir_readdir(struct dir* dir, char name[NAME_MAX + 1]) {
 /*
   ### Helper Functions ###
 */
-static int get_next_part(char part[NAME_MAX + 1], const char** srcp);
 
 /* Opens & returns the dir struct given dir_name. If dir_name doesn’t exist, return NULL.
   Can handle both absolute and relative paths. */
@@ -260,7 +259,7 @@ struct dir* dir_get(const char* dir_name) {
 /* Extracts a file name part from *SRCP into PART, and updates *SRCP so that the
    next call will return the next file name part. Returns 1 if successful, 0 at
    end of string, -1 for a too-long file name part. */
-static int get_next_part(char part[NAME_MAX + 1], const char** srcp) {
+int get_next_part(char part[NAME_MAX + 1], const char** srcp) {
   const char* src = *srcp;
   char* dst = part;
 

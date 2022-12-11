@@ -147,12 +147,12 @@ static void do_format(void) {
   If path is a directory, sets filename to new directory that's to be created/removed
   and dir_name to existing directory. */
 void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
-  // if path ends in a trailing slash, strip it off
-  if (path[strlen(path) - 1] == '/') {
+  // strip trailing slashes
+  while (path[strlen(path) - 1] == '/') {
     path[strlen(path) - 1] = '\0';
   }
 
-  // find last occurence of /
+  // find last occurence of '/'
   char* pivot = strrchr(path, '/');
 
   if (pivot == NULL) { // TODO: update this after . and .. handled in dir_get
@@ -162,10 +162,18 @@ void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
     return;
   }
 
-  int len = strlen(path);
-  int file_len = strlen(pivot);
-  int dir_len = len - file_len;
+  /* Set filename. Ex. path could be a//b/c//d.txt. pivot = /d.txt */
+  strlcpy(filename, pivot + 1, sizeof(char) * (strlen(pivot)));
 
-  strlcpy(dir_name, path, sizeof(char) * (dir_len + 1));
-  strlcpy(filename, path, sizeof(char) * (file_len + 1));
+  /* Make path not include the filename. */
+  pivot[0] = '\0';
+
+  /* Set dirname. Ex. path is now a//b/c/ */
+  char next_part[NAME_MAX + 1];
+  int step = 0;
+  while (get_next_part(next_part, &path) == 1) {
+    strlcpy(dir_name + step, next_part, sizeof(char) * (strlen(next_part)));
+    strlcpy(dir_name + step + 1, "/", sizeof(char) * (1 + 1));
+    step += strlen(next_part) + 1;
+  }
 }
