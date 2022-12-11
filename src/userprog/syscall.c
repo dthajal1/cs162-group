@@ -418,11 +418,13 @@ int sys_compute_e(int n) { return sys_sum_to_e(n); }
 /* Changes the current working directory of the process to dir. 
 Returns true if successful, false on failure. */
 int sys_chdir(const char* dir) {
-  struct dir* new_dir = dir_get(dir); // Opens and returns dir
-  if (new_dir == NULL)
+  struct dir* new_cwd = dir_get(dir);
+  if (new_cwd == NULL)
     return false;
 
-  thread_current()->pcb->cwd = new_dir;
+  struct thread* cur = thread_current();
+  dir_close(cur->pcb->cwd); // close old cwd
+  cur->pcb->cwd = new_cwd;  // set new cwd
   return true;
 }
 
