@@ -55,11 +55,7 @@ bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
-  if (strcmp(dir_name, ".") == 0) {
-    dir = dir_reopen(dir_open_root());
-  } else {
-    dir = dir_get(dir_name);
-  }
+  dir = dir_get(dir_name);
 
   bool success =
       (dir != NULL && free_map_allocate(1, &inode_sector) &&
@@ -89,11 +85,7 @@ struct file* filesys_open(const char* name) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
-  if (strcmp(dir_name, ".") == 0) {
-    dir = dir_reopen(dir_open_root());
-  } else {
-    dir = dir_get(dir_name);
-  }
+  dir = dir_get(dir_name);
 
   if (dir != NULL)
     dir_lookup(dir, filename, &inode);
@@ -117,15 +109,7 @@ bool filesys_remove(const char* name) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
-  if (strcmp(dir_name, ".") == 0) {
-    /* Disallow removal of root directory. */
-    if (filename[0] == '\0')
-      return false;
-
-    dir = dir_reopen(dir_open_root());
-  } else {
-    dir = dir_get(dir_name);
-  }
+  dir = dir_get(dir_name);
 
   bool success = dir != NULL && dir_remove(dir, filename);
   dir_close(dir);
@@ -156,17 +140,11 @@ void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
     path[strlen(path) - 1] = '\0';
   }
 
-  // strip leading slashes
-  while (path[0] == '/') {
-    path += 1;
-  }
-
   // find last occurence of '/'
   char* pivot = strrchr(path, '/');
 
-  if (pivot == NULL) {
-    // path = 'filename'.
-    strlcpy(dir_name, ".", sizeof(char) * (1 + 1));
+  if (pivot == NULL) { // path = 'filename'.
+    strlcpy(dir_name, "\0", sizeof(char) * (1));
     strlcpy(filename, path, sizeof(char) * (strlen(path) + 1));
     return;
   }
@@ -178,11 +156,5 @@ void split_path(char* path, char* dir_name, char filename[NAME_MAX + 1]) {
   pivot[0] = '\0';
 
   /* Set dirname. Ex. path is now a//b/c/ */
-  char next_part[NAME_MAX + 1];
-  int step = 0;
-  while (get_next_part(next_part, &path) == 1) {
-    strlcpy(dir_name + step, next_part, sizeof(char) * (strlen(next_part)));
-    strlcpy(dir_name + step + 1, "/", sizeof(char) * (1 + 1));
-    step += strlen(next_part) + 1;
-  }
+  strlcpy(dir_name, path, sizeof(char) * (strlen(path) + 1));
 }

@@ -75,7 +75,7 @@ pid_t process_execute(const char* file_name) {
   /* Initialize exec_info. */
   exec.file_name = file_name;
   sema_init(&exec.load_done, 0);
-  exec.cwd = dir_reopen(thread_current()->pcb->cwd);
+  exec.cwd = thread_current()->pcb->cwd;
 
   /* Create a new thread to execute FILE_NAME. */
   strlcpy(thread_name, file_name, sizeof thread_name);
@@ -138,7 +138,7 @@ static void start_process(void* exec_) {
 
   /* Inherit parent's cwd. */
   if (success) {
-    t->pcb->cwd = exec->cwd;
+    t->pcb->cwd = dir_reopen(exec->cwd);
   }
 
   /* Initialize interrupt frame and load executable. */

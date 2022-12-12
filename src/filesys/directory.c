@@ -177,19 +177,28 @@ bool dir_remove(struct dir* dir, const char* name) {
   if (inode == NULL)
     goto done;
 
-  // Allow directories deletion only if they do not contain any files or subdirectories
-  if (dir->num_items != 0) {
-    goto done;
-  }
+  if (inode_get_is_dir(inode)) {
+    // Allow directories deletion only if they do not contain any files or subdirectories
+    if (dir->num_items != 0) {
+      goto done;
+    }
 
-  // Disallow deletion of root directory
-  if (e.inode_sector == ROOT_DIR_SECTOR) {
-    goto done;
-  }
+    // Disallow deletion of root directory
+    if (e.inode_sector == ROOT_DIR_SECTOR) {
+      goto done;
+    }
 
-  // Disallow deletion of a directory that is open by a process or in use as a process’s cwd
-  if (inode_get_open_cnt(inode) > 0 || e.in_use) {
-    goto done;
+    // Disallow deletion of a directory that is in use as a process’s cwd
+    struct inode* cwd_inode = dir_get_inode(get_cwd(thread_current()->pcb));
+    if (inode == cwd_inode) {
+      goto done;
+    }
+
+    // Disallow deletion of a directory that is open by a process
+    if (inode_get_open_cnt(inode) > 1) {
+      int open_cnt = inode_get_open_cnt(inode);
+      goto done;
+    }
   }
 
   /* Erase directory entry. */
@@ -237,7 +246,7 @@ struct dir* dir_get(const char* dir_name) {
   struct inode* inode = NULL;
 
   if (dir_name[0] == '/') { // absolute path
-    dir = dir_reopen(dir_open_root());
+    dir = dir_open_root();
   } else { // relative path
     struct dir* cwd = get_cwd(thread_current()->pcb);
     dir = dir_reopen(cwd);
@@ -289,7 +298,7 @@ struct dir* get_parent_dir(const char* dir) {
   struct dir* child_dir = dir_get(dir);
   struct dir* parent_dir = NULL;
   if (child_dir == NULL)
-    parent_dir = dir_reopen(dir_open_root());
+    parent_dir = dir_open_root();
   else {
     /* lookup and return parent dir of child dir */
     struct inode* parent_inode = NULL;
