@@ -177,11 +177,14 @@ bool dir_remove(struct dir* dir, const char* name) {
   if (inode == NULL)
     goto done;
 
+  // If this file is a dir
   if (inode_get_is_dir(inode)) {
-    // Allow directories deletion only if they do not contain any files or subdirectories
-    if (dir->num_items != 0) {
+    // Disallow deletion if this dir contains anything
+    struct dir* this_dir = dir_get(name);
+    if (this_dir->num_items != 0) {
       goto done;
     }
+    dir_close(this_dir);
 
     // Disallow deletion of root directory
     if (e.inode_sector == ROOT_DIR_SECTOR) {
@@ -329,6 +332,7 @@ bool make_new_dir(const char* dir) {
     success = dir_add(new_dir, "..", inode_get_inumber(dir_get_inode(parent_dir))) &&
               dir_add(new_dir, ".", inode_get_inumber(dir_get_inode(new_dir)));
     dir_close(parent_dir);
+    dir_close(new_dir);
   }
 
   return success;
