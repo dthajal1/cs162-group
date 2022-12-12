@@ -55,6 +55,11 @@ bool filesys_create(const char* name, off_t initial_size, bool is_dir) {
 
   strlcpy(path, name, sizeof(char) * (strlen(name) + 1));
   split_path(path, dir_name, filename);
+
+  /* disallow empty directory/file name. */
+  if (strcmp(filename, "") == 0)
+    return false;
+
   dir = dir_get(dir_name);
 
   bool success =
