@@ -246,7 +246,7 @@ struct dir* dir_get(const char* dir_name) {
   struct inode* inode = NULL;
 
   if (dir_name[0] == '/') { // absolute path
-    dir = dir_open_root();
+    dir = dir_reopen(dir_open_root());
   } else { // relative path
     struct dir* cwd = get_cwd(thread_current()->pcb);
     dir = dir_reopen(cwd);
@@ -298,7 +298,7 @@ struct dir* get_parent_dir(const char* dir) {
   struct dir* child_dir = dir_get(dir);
   struct dir* parent_dir = NULL;
   if (child_dir == NULL)
-    parent_dir = dir_open_root();
+    parent_dir = dir_reopen(dir_open_root());
   else {
     /* lookup and return parent dir of child dir */
     struct inode* parent_inode = NULL;
